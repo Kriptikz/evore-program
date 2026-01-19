@@ -1,0 +1,15 @@
+pub mod process_create_manager;
+pub mod process_mm_deploy;
+pub mod process_checkpoint;
+pub mod process_claim_sol;
+pub mod process_claim_ore;
+pub mod process_create_deployer;
+pub mod process_update_deployer;
+pub mod process_mm_autodeploy;
+pub mod process_deposit_autodeploy_balance;
+pub mod process_recycle_sol;
+pub mod process_withdraw_autodeploy_balance;
+pub mod process_mm_autocheckpoint;
+pub mod process_mm_full_autodeploy;
+pub mod process_transfer_manager;
+pub mod process_mm_create_miner;

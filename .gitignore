@@ -1,0 +1,6 @@
+.DS_Store
+crank/.env
+crank/crank.db
+js-crank/.env
+/js-crank/node_modules
+/target
