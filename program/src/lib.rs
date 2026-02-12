@@ -81,6 +81,9 @@ pub fn process_instruction(
         Instructions::MMCreateMiner => {
             process_mm_create_miner::process_mm_create_miner(accounts, data)?;
         }
+        Instructions::WithdrawTokens => {
+            process_withdraw_tokens::process_withdraw_tokens(accounts, data)?;
+        }
     }
 
     Ok(())

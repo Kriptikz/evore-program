@@ -21,6 +21,7 @@ pub enum Instructions {
     MMFullAutodeploy = 12,
     TransferManager = 13,
     MMCreateMiner = 14,
+    WithdrawTokens = 15,
 }
 
 /// Deployment strategy enum with associated data
@@ -970,5 +971,48 @@ pub fn mm_create_miner(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instruc
             AccountMeta::new_readonly(ore_api::id(), false),
         ],
         data: MMCreateMiner { auth_id: auth_id.to_le_bytes(), bump }.to_bytes(),
+    }
+}
+
+// ============================================================================
+// WithdrawTokens Instruction
+// ============================================================================
+
+/// WithdrawTokens instruction data
+/// Withdraws the full balance of any SPL token from a managed_miner_auth's ATA
+/// to the manager authority's ATA. Mint-agnostic: pass the mint as an account.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct WithdrawTokens {
+    pub auth_id: [u8; 8],
+    pub bump: u8,
+}
+
+instruction!(Instructions, WithdrawTokens);
+
+/// Withdraw full token balance from a managed_miner_auth's ATA to the signer's ATA.
+/// The mint is passed as an account, making this instruction mint-agnostic.
+pub fn withdraw_tokens(signer: Pubkey, manager: Pubkey, auth_id: u64, mint: Pubkey) -> Instruction {
+    let (managed_miner_auth_address, bump) = managed_miner_auth_pda(manager, auth_id);
+    let source_ata = get_associated_token_address(&managed_miner_auth_address, &mint);
+    let destination_ata = get_associated_token_address(&signer, &mint);
+
+    Instruction {
+        program_id: crate::id(),
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new_readonly(manager, false),
+            AccountMeta::new(managed_miner_auth_address, false),
+            AccountMeta::new(source_ata, false),
+            AccountMeta::new(destination_ata, false),
+            AccountMeta::new_readonly(mint, false),
+            AccountMeta::new_readonly(system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(spl_associated_token_account::id(), false),
+        ],
+        data: WithdrawTokens {
+            auth_id: auth_id.to_le_bytes(),
+            bump,
+        }.to_bytes(),
     }
 }

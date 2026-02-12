@@ -354,6 +354,58 @@ pub struct Miner {
     pub lifetime_deployed: u64,
 }
 
+impl Miner {
+    pub fn pda(&self) -> (Pubkey, u8) {
+        miner_pda(self.authority)
+    }
+
+    pub fn claim_ore(&mut self, clock: &Clock, treasury: &mut Treasury) -> u64 {
+        self.update_rewards(treasury);
+        let refined_ore = self.refined_ore;
+        let rewards_ore = self.rewards_ore;
+        let mut amount = refined_ore + rewards_ore;
+        self.refined_ore = 0;
+        self.rewards_ore = 0;
+        treasury.total_unclaimed -= rewards_ore;
+        treasury.total_refined -= refined_ore;
+        self.last_claim_ore_at = clock.unix_timestamp;
+
+        // Charge a 10% fee and share with miners who haven't claimed yet.
+        if treasury.total_unclaimed > 0 {
+            let fee = rewards_ore / 10;
+            amount -= fee;
+            treasury.miner_rewards_factor += Numeric::from_fraction(fee, treasury.total_unclaimed);
+            treasury.total_refined += fee;
+            self.lifetime_rewards_ore -= fee;
+        }
+
+        amount
+    }
+
+    pub fn claim_sol(&mut self, clock: &Clock) -> u64 {
+        let amount = self.rewards_sol;
+        self.rewards_sol = 0;
+        self.last_claim_sol_at = clock.unix_timestamp;
+        amount
+    }
+
+    pub fn update_rewards(&mut self, treasury: &Treasury) {
+        // Accumulate rewards, weighted by stake balance.
+        if treasury.miner_rewards_factor > self.rewards_factor {
+            let accumulated_rewards = treasury.miner_rewards_factor - self.rewards_factor;
+            if accumulated_rewards < Numeric::ZERO {
+                panic!("Accumulated rewards is negative");
+            }
+            let personal_rewards = accumulated_rewards * Numeric::from_u64(self.rewards_ore);
+            self.refined_ore += personal_rewards.to_u64();
+            self.lifetime_rewards_ore += personal_rewards.to_u64();
+        }
+
+        // Update this miner account's last seen rewards factor.
+        self.rewards_factor = treasury.miner_rewards_factor;
+    }
+}
+
 account!(OreAccount, Miner);
 
 #[repr(C)]
@@ -553,17 +605,15 @@ pub enum OreInstruction {
     Deposit = 10,
     Withdraw = 11,
     ClaimYield = 12,
+    CompoundYield = 22,
 
     // Admin
-    Bury = 13,
+    Buyback = 13,
+    Bury = 24,
     Wrap = 14,
     SetAdmin = 15,
-    SetFeeCollector = 16,
-    SetSwapProgram = 17,
-    SetVarAddress = 18,
     NewVar = 19,
-    SetAdminFee = 20,
-    MigrateAutomation = 22,
+    Liq = 25,
 }
 
 #[repr(C)]
@@ -835,5 +885,32 @@ pub fn reload_sol(signer: Pubkey, authority: Pubkey) -> Instruction {
   }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct CompoundYield {}
+instruction!(OreInstruction, CompoundYield);
+
+
+pub fn compound_yield(signer: Pubkey) -> Instruction {
+    let stake_address = stake_pda(signer).0;
+    let mint_address = MINT_ADDRESS;
+    let stake_tokens_address = get_associated_token_address(&stake_address, &MINT_ADDRESS);
+    let treasury_address = treasury_pda().0;
+    let treasury_tokens_address = treasury_tokens_address();
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(mint_address, false),
+            AccountMeta::new(stake_address, false),
+            AccountMeta::new(stake_tokens_address, false),
+            AccountMeta::new(treasury_address, false),
+            AccountMeta::new(treasury_tokens_address, false),
+            AccountMeta::new_readonly(system_program::ID, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+        ],
+        data: CompoundYield {}.to_bytes(),
+    }
+}
 
 
