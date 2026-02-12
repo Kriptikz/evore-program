@@ -1,14 +1,12 @@
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program
+    account_info::AccountInfo, instruction::{AccountMeta, Instruction},
+    program_error::ProgramError, pubkey::Pubkey, system_program
 };
 use steel::*;
 
 use crate::{
     consts::{DEPLOY_FEE, FEE_COLLECTOR}, entropy_api, error::EvoreError, instruction::{DeployStrategy, MMDeploy}, ore_api::{self, Board, Round}, state::Manager
 };
-
-/// Maximum number of CPI calls allowed per transaction
-const MAX_CPI_CALLS: usize = 18;
 
 /// A batch of deployments to execute in a single CPI call
 /// Multiple squares can receive the same amount in one CPI
@@ -151,7 +149,7 @@ pub fn process_mm_deploy(
     }
 
     // Calculate deployments based on strategy - returns batched deployments
-    let (batches, total_deployed) = match strategy {
+    let (mut batches, total_deployed) = match strategy {
         DeployStrategy::EV { bankroll, max_per_square, min_bet, ore_value, .. } => {
             calculate_ev_deployments(round, bankroll, min_bet, max_per_square, ore_value)
         },
@@ -226,16 +224,22 @@ pub fn process_mm_deploy(
     } else {
         0
     };
-    
-    // Required balance after transaction:
-    // - AUTH_PDA_RENT: keep PDA rent-exempt
-    // - CHECKPOINT_FEE: ORE checkpoint requires this
+
+    // Automation account rent (temporary - returned when closed or auto-closed)
+    let automation_size = 8 + std::mem::size_of::<ore_api::Automation>();
+    let automation_rent = solana_program::rent::Rent::default().minimum_balance(automation_size);
+
+    // Required balance in auth_pda:
+    // - AUTH_PDA_RENT: keep PDA rent-exempt (retained, never deposited)
+    // - CHECKPOINT_FEE: ORE checkpoint requires this in the miner
     // - total_deployed: funds for deployments
     // - miner_rent: if miner account needs creation
+    // - automation_rent: temporary automation account creation (returned on close)
     let required_balance = AUTH_PDA_RENT
         .saturating_add(ore_api::CHECKPOINT_FEE)
         .saturating_add(total_deployed)
-        .saturating_add(miner_rent);
+        .saturating_add(miner_rent)
+        .saturating_add(automation_rent);
     
     let current_balance = managed_miner_auth_account_info.lamports();
     let transfer_amount = required_balance.saturating_sub(current_balance);
@@ -251,8 +255,60 @@ pub fn process_mm_deploy(
         )?;
     }
 
-    // Execute batched deployments - each batch is a single CPI call
-    let managed_miner_auth_key = *deploy_accounts[0].key;
+    // Build seeds for managed_miner_auth signing (reused across all CPIs)
+    let auth_id_bytes = auth_id.to_le_bytes();
+    let managed_miner_auth_seeds: &[&[u8]] = &[
+        crate::consts::MANAGED_MINER_AUTH,
+        manager_account_info.key.as_ref(),
+        &auth_id_bytes,
+        &[args.bump],
+    ];
+
+    let managed_miner_auth_key = *managed_miner_auth_account_info.key;
+
+    // Deposit all available SOL from auth_pda except its rent-exempt minimum.
+    // automation_rent is deducted separately by ORE's create_account before deposit.
+    let deposit = managed_miner_auth_account_info.lamports()
+        .saturating_sub(AUTH_PDA_RENT)
+        .saturating_sub(automation_rent);
+
+    // Sort batches ascending by amount so the largest deploy is last.
+    // automation.amount = max_batch_amount is both:
+    //   1. The Discretionary cap on per-deploy amount
+    //   2. The auto-close threshold (ORE closes when balance < amount + fee)
+    // By deploying smallest-first, all deploys before the last keep the balance
+    // well above max_batch_amount (since deposit >= total_deployed). Only the
+    // last deploy can push balance below the threshold, guaranteeing automation
+    // stays active for every deploy without needing re-opens.
+    batches.sort_by_key(|b| b.amount);
+    let max_batch_amount = batches.last().map(|b| b.amount).unwrap_or(0);
+
+    // Open ephemeral automation with Discretionary strategy
+    let automate_open_accounts = vec![
+        managed_miner_auth_account_info.clone(),  // signer (authority)
+        automation_account_info.clone(),           // automation PDA
+        managed_miner_auth_account_info.clone(),   // executor = auth_pda
+        ore_miner_account_info.clone(),            // miner
+        system_program.clone(),                    // system_program
+    ];
+    solana_program::program::invoke_signed(
+        &ore_api::automate(
+            managed_miner_auth_key,
+            max_batch_amount,        // amount: Discretionary cap (max single batch)
+            deposit,                 // deposit: all available SOL from auth_pda
+            managed_miner_auth_key,  // executor = ourselves
+            0,                       // fee
+            0,                       // mask (not used for Discretionary)
+            2,                       // strategy = Discretionary
+            false,                   // reload
+        ),
+        &automate_open_accounts,
+        &[managed_miner_auth_seeds],
+    )?;
+
+    // Execute batched deployments (ascending order).
+    // With automation active, ORE deducts from automation.balance directly
+    // instead of doing a system_program::transfer CPI, saving 1 trace per deploy.
     for batch in batches {
         if batch.amount == 0 {
             continue;
@@ -267,27 +323,59 @@ pub fn process_mm_deploy(
                 batch.squares,
             ),
             &deploy_accounts,
-            &[&[
-                crate::consts::MANAGED_MINER_AUTH,
-                manager_account_info.key.as_ref(),
-                &auth_id.to_le_bytes(),
-                &[args.bump],
-            ]],
+            &[managed_miner_auth_seeds],
+        )?;
+    }
+
+    // Close ephemeral automation if still open after all deploys.
+    // ORE auto-closes when balance < amount + fee, which may have already
+    // handled this. If deposit was large relative to total_deployed, the
+    // automation may still be open and needs explicit closing.
+    if !automation_account_info.data_is_empty() {
+        let automate_close_accounts = vec![
+            managed_miner_auth_account_info.clone(),
+            automation_account_info.clone(),
+            system_program.clone(),              // executor = Pubkey::default() = system_program
+            ore_miner_account_info.clone(),
+            system_program.clone(),
+        ];
+        let close_ix = Instruction {
+            program_id: ore_api::id(),
+            accounts: vec![
+                AccountMeta::new(managed_miner_auth_key, true),
+                AccountMeta::new(*automation_account_info.key, false),
+                AccountMeta::new_readonly(Pubkey::default(), false), // executor readonly
+                AccountMeta::new(*ore_miner_account_info.key, false),
+                AccountMeta::new_readonly(*system_program.key, false),
+            ],
+            data: ore_api::Automate {
+                amount: 0u64.to_le_bytes(),
+                deposit: 0u64.to_le_bytes(),
+                fee: 0u64.to_le_bytes(),
+                mask: 0u64.to_le_bytes(),
+                strategy: 0,
+                reload: 0u64.to_le_bytes(),
+            }
+            .to_bytes(),
+        };
+        solana_program::program::invoke_signed(
+            &close_ix,
+            &automate_close_accounts,
+            &[managed_miner_auth_seeds],
         )?;
     }
 
     Ok(())
 }
 
-/// Calculate deployments using percentage strategy with bucketing for CPI optimization.
+/// Calculate deployments using percentage strategy.
 /// Deploys to own `percentage` (in basis points) of each square across `squares_count` squares.
-/// 
-/// Key behavior: 
+/// Each square gets its own deployment CPI with its exact calculated amount (up to 25 CPIs).
+///
+/// Key behavior:
 /// - If bankroll is insufficient, percentage is automatically reduced.
-/// - If more than 18 squares need deployment, squares are grouped into exactly 18 buckets
-///   based on similar deployment amounts. Squares in each bucket receive the average amount.
-/// - If 18 or fewer squares, each square gets its own deployment (no bucketing).
-/// 
+/// - Each square gets its own individual batch (no bucketing).
+///
 /// Formula to own P% of square: amount = P * T / (10000 - P)
 /// Max affordable percentage: P_max = 10000 * B / (Total + B)
 fn calculate_percentage_deployments(
@@ -337,7 +425,8 @@ fn calculate_percentage_deployments(
     
     // Step 3: Calculate ideal amount for each deployable square
     let p_actual = actual_percentage as u128;
-    let mut square_amounts: Vec<(usize, u64)> = Vec::new();
+    let mut batches = Vec::with_capacity(deployable_indices.len());
+    let mut total_spent: u64 = 0;
     
     for &i in &deployable_indices {
         let t = round.deployed[i] as u128;
@@ -345,87 +434,8 @@ fn calculate_percentage_deployments(
         let amount = amount_u128.min(u64::MAX as u128) as u64;
         
         if amount > 0 {
-            square_amounts.push((i, amount));
-        }
-    }
-    
-    if square_amounts.is_empty() {
-        return (Vec::new(), 0);
-    }
-    
-    // Step 4: Create batches - bucket if >18 squares, otherwise individual
-    let num_squares = square_amounts.len();
-    
-    if num_squares <= MAX_CPI_CALLS {
-        // No bucketing needed - each square gets its own batch
-        let mut batches = Vec::with_capacity(num_squares);
-        let mut total_spent: u64 = 0;
-        
-        for (square_idx, amount) in square_amounts {
-            batches.push(DeploymentBatch::single(amount, square_idx));
+            batches.push(DeploymentBatch::single(amount, i));
             total_spent = total_spent.saturating_add(amount);
-        }
-        
-        (batches, total_spent)
-    } else {
-        // Bucketing required - sort by amount and group into exactly 18 buckets
-        bucket_deployments(square_amounts)
-    }
-}
-
-/// Group squares into exactly 18 buckets based on similar deployment amounts.
-/// Squares are sorted by amount and then divided into 18 groups.
-/// Each bucket deploys the average amount to all squares in that bucket.
-fn bucket_deployments(mut square_amounts: Vec<(usize, u64)>) -> (Vec<DeploymentBatch>, u64) {
-    let num_squares = square_amounts.len();
-    
-    // Sort by amount ascending so adjacent squares have similar amounts
-    square_amounts.sort_by_key(|&(_, amt)| amt);
-    
-    // Distribute squares into exactly 18 buckets
-    // With N squares and 18 buckets:
-    // - First (N % 18) buckets get (N / 18 + 1) squares each
-    // - Remaining buckets get (N / 18) squares each
-    let base_size = num_squares / MAX_CPI_CALLS;
-    let extra_squares = num_squares % MAX_CPI_CALLS;
-    
-    let mut batches = Vec::with_capacity(MAX_CPI_CALLS);
-    let mut total_spent: u64 = 0;
-    let mut idx = 0;
-    
-    for bucket_idx in 0..MAX_CPI_CALLS {
-        // Determine how many squares go in this bucket
-        let bucket_size = if bucket_idx < extra_squares {
-            base_size + 1
-        } else {
-            base_size
-        };
-        
-        if bucket_size == 0 {
-            continue;
-        }
-        
-        // Collect squares for this bucket and calculate average amount
-        let mut squares_mask = [false; 25];
-        let mut sum_amounts: u64 = 0;
-        
-        for _ in 0..bucket_size {
-            if idx < num_squares {
-                let (square_idx, amount) = square_amounts[idx];
-                squares_mask[square_idx] = true;
-                sum_amounts = sum_amounts.saturating_add(amount);
-                idx += 1;
-            }
-        }
-        
-        // Use average amount for this bucket
-        let avg_amount = sum_amounts / (bucket_size as u64);
-        
-        if avg_amount > 0 {
-            // Total for this batch is avg_amount * number of squares in batch
-            let batch_total = avg_amount.saturating_mul(bucket_size as u64);
-            total_spent = total_spent.saturating_add(batch_total);
-            batches.push(DeploymentBatch::new(avg_amount, squares_mask));
         }
     }
     

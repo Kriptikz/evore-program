@@ -1432,11 +1432,11 @@ mod percentage_deploy {
         );
     }
     
-    /// This test verifies the 25-square deployment attempt and documents the test framework limitation.
-    /// On mainnet, this would succeed. In tests, it hits MaxInstructionTraceLengthExceeded.
+    /// This test verifies 25-square deployment succeeds with ephemeral automation.
+    /// Previously ignored due to MaxInstructionTraceLengthExceeded; now works because
+    /// ephemeral Discretionary automation eliminates per-deploy system_program::transfer CPIs.
     #[tokio::test]
-    #[ignore = "solana-program-test has lower instruction trace limit than mainnet; this succeeds on mainnet with 1.4M CU"]
-    async fn test_deploy_to_all_25_squares_mainnet_only() {
+    async fn test_deploy_to_all_25_squares() {
         let mut program_test = setup_programs();
         
         let miner = Keypair::new();
@@ -2159,6 +2159,187 @@ mod percentage_deploy {
             blockhash,
         );
         context.banks_client.process_transaction(tx).await.expect("single square deploy should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_ephemeral_automation_25_squares() {
+        // Verifies that mm_deploy uses ephemeral Discretionary automation to save
+        // instruction trace usage, enabling true 25-square percentage deploys.
+        //
+        // Expected behavior:
+        //   1. CPI automate (open automation, deposit SOL)
+        //   2. Loop: CPI deploy x25 (uses automation.balance, no internal transfer)
+        //   3. CPI automate (close automation, return SOL)
+        //   4. Automation account is empty/closed after the transaction
+        //
+        // This test FAILS with current code because:
+        //   - Bucketing limits deploys to 18 CPIs (not true 25-square), OR
+        //   - MaxInstructionTraceLengthExceeded when attempting 25 CPIs without automation
+        //   - Automation account is never opened/closed by current code
+        //
+        // Key setup: each of the 25 squares has a DIFFERENT deployed amount so that the
+        // percentage strategy produces 25 unique deployment amounts. If bucketing were used,
+        // some squares would share averaged amounts. By verifying all 25 deployed amounts
+        // are unique, we prove no bucketing occurred.
+
+        let mut program_test = setup_programs();
+
+        let miner = Keypair::new();
+        let manager_keypair = Keypair::new();
+        let manager_address = manager_keypair.pubkey();
+        let auth_id = 1u64;
+        let managed_miner_auth = managed_miner_auth_pda(manager_address, auth_id);
+
+        let current_slot = 1000;
+        let end_slot = current_slot + 5;
+        add_board_account(&mut program_test, TEST_ROUND_ID, current_slot, end_slot, 0);
+
+        // Each of the 25 squares has a DIFFERENT deployed amount.
+        // Percentage strategy calculates: amount_i = percentage * deployed_i / (10000 - percentage)
+        // With unique deployed_i values, each square gets a unique deployment amount.
+        // Bucketing would average adjacent amounts, destroying this uniqueness.
+        let deployed: [u64; 25] = [
+            50_000_000,   // 0.05 SOL
+            75_000_000,   // 0.075 SOL
+            100_000_000,  // 0.1 SOL
+            125_000_000,  // 0.125 SOL
+            150_000_000,  // 0.15 SOL
+            175_000_000,  // 0.175 SOL
+            200_000_000,  // 0.2 SOL
+            225_000_000,  // 0.225 SOL
+            250_000_000,  // 0.25 SOL
+            275_000_000,  // 0.275 SOL
+            300_000_000,  // 0.3 SOL
+            325_000_000,  // 0.325 SOL
+            350_000_000,  // 0.35 SOL
+            375_000_000,  // 0.375 SOL
+            400_000_000,  // 0.4 SOL
+            425_000_000,  // 0.425 SOL
+            450_000_000,  // 0.45 SOL
+            475_000_000,  // 0.475 SOL
+            500_000_000,  // 0.5 SOL
+            525_000_000,  // 0.525 SOL
+            550_000_000,  // 0.55 SOL
+            575_000_000,  // 0.575 SOL
+            600_000_000,  // 0.6 SOL
+            625_000_000,  // 0.625 SOL
+            650_000_000,  // 0.65 SOL
+        ];
+        let total_deployed: u64 = deployed.iter().sum();
+        add_round_account(&mut program_test, TEST_ROUND_ID, deployed, total_deployed, end_slot + 1000);
+        add_entropy_var_account(&mut program_test, board_pda().0, end_slot);
+        add_treasury_account(&mut program_test);
+        add_mint_account(&mut program_test);
+        add_treasury_ata_account(&mut program_test);
+        add_config_account(&mut program_test);
+        add_ore_miner_account(
+            &mut program_test,
+            managed_miner_auth.0,
+            [0u64; 25],
+            0, 0,
+            TEST_ROUND_ID - 1,
+            TEST_ROUND_ID - 1,
+        );
+
+        let mut context = program_test.start_with_context().await;
+        let _ = context.warp_to_slot(current_slot + 3);
+
+        // Fund miner and fee collector
+        let miner_initial_funding = 10_000_000_000u64; // 10 SOL
+        let ix_fund_miner = system_instruction::transfer(
+            &context.payer.pubkey(),
+            &miner.pubkey(),
+            miner_initial_funding,
+        );
+        let ix_fund_fee = system_instruction::transfer(
+            &context.payer.pubkey(),
+            &FEE_COLLECTOR,
+            1_000_000,
+        );
+        let blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+        let fund_tx = Transaction::new_signed_with_payer(
+            &[ix_fund_miner, ix_fund_fee],
+            Some(&context.payer.pubkey()),
+            &[&context.payer],
+            blockhash,
+        );
+        context.banks_client.process_transaction(fund_tx).await.unwrap();
+
+        // Capture miner balance before deploy
+        let miner_balance_before = context.banks_client.get_balance(miner.pubkey()).await.unwrap();
+
+        // Build deploy transaction: create_manager + percentage_deploy to ALL 25 squares
+        let cu_limit_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_400_000);
+        let create_manager_ix = evore::instruction::create_manager(miner.pubkey(), manager_address);
+        let deploy_ix = evore::instruction::percentage_deploy(
+            miner.pubkey(),
+            manager_address,
+            auth_id,
+            TEST_ROUND_ID,
+            5_000_000_000, // 5 SOL bankroll
+            500,           // 5% basis points
+            25,            // ALL 25 squares
+            true,          // allow_multi_deploy
+        );
+
+        let blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+        let deploy_tx = Transaction::new_signed_with_payer(
+            &[cu_limit_ix, create_manager_ix, deploy_ix],
+            Some(&miner.pubkey()),
+            &[&miner, &manager_keypair],
+            blockhash,
+        );
+
+        // Assertion 1: The transaction must succeed with true 25-square deploys
+        context
+            .banks_client
+            .process_transaction(deploy_tx)
+            .await
+            .expect("ephemeral automation should enable 25-square percentage deploy within 1.4M CU");
+
+        // Advance slot so committed state is visible for account reads
+        let current_slot = context.banks_client.get_root_slot().await.unwrap();
+        context.warp_to_slot(current_slot + 1).unwrap();
+
+        // Assertion 2: ALL 25 squares must have non-zero deployments in the Miner account.
+        let ore_miner_address = miner_pda(managed_miner_auth.0).0;
+        let ore_miner_account = context.banks_client.get_account(ore_miner_address).await.unwrap().unwrap();
+        let ore_miner = Miner::try_from_bytes(&ore_miner_account.data).unwrap();
+        let squares_with_deployments = ore_miner.deployed.iter().filter(|&&d| d > 0).count();
+        assert_eq!(
+            squares_with_deployments, 25,
+            "All 25 squares must have non-zero deployments. Got {} squares deployed. Deployed: {:?}",
+            squares_with_deployments, ore_miner.deployed,
+        );
+
+        // Assertion 3: All 25 deployed amounts must be UNIQUE.
+        // Percentage of different board amounts produces different deploy amounts.
+        // Bucketing would average some together, destroying uniqueness.
+        let mut deployed_amounts: Vec<u64> = ore_miner.deployed.to_vec();
+        deployed_amounts.sort();
+        let unique_count = deployed_amounts.windows(2).filter(|w| w[0] != w[1]).count() + 1;
+        assert_eq!(
+            unique_count, 25,
+            "All 25 deployed amounts must be unique (no bucketing). Deployed: {:?}",
+            ore_miner.deployed,
+        );
+
+        // Assertion 4: The automation account for managed_miner_auth must be empty/closed
+        let automation_address = ore_api::automation_pda(managed_miner_auth.0).0;
+        let automation_account = context.banks_client.get_account(automation_address).await.unwrap();
+        assert!(
+            automation_account.is_none(),
+            "Automation account should be closed after ephemeral use"
+        );
+
+        // Assertion 5: Miner's SOL balance decreased (actual SOL was deployed)
+        let miner_balance_after = context.banks_client.get_balance(miner.pubkey()).await.unwrap();
+        assert!(
+            miner_balance_after < miner_balance_before,
+            "Miner balance should decrease after deploying. Before: {}, After: {}",
+            miner_balance_before,
+            miner_balance_after,
+        );
     }
 }
 
@@ -3371,5 +3552,318 @@ mod test_mm_create_miner {
         let automation_address = ore_api::automation_pda(managed_miner_auth).0;
         let automation_account = ctx.banks_client.get_account(automation_address).await.unwrap();
         assert!(automation_account.is_none(), "Automation account should be closed");
+    }
+}
+
+// ============================================================================
+// WithdrawTokens Tests
+// ============================================================================
+
+mod withdraw_tokens {
+    use super::*;
+    use solana_program::program_pack::Pack;
+    use spl_token::state::Mint as SplMint;
+    use spl_token::state::Account as SplTokenAccount;
+
+    /// Helper: add a pre-serialized SPL Mint account to ProgramTest
+    fn add_spl_mint_account(program_test: &mut ProgramTest, mint_address: Pubkey) {
+        let mut mint_data = vec![0u8; SplMint::LEN];
+        let mint_state = SplMint {
+            mint_authority: solana_program::program_option::COption::None,
+            supply: 1_000_000_000,
+            decimals: 9,
+            is_initialized: true,
+            freeze_authority: solana_program::program_option::COption::None,
+        };
+        SplMint::pack(mint_state, &mut mint_data).unwrap();
+
+        program_test.add_account(
+            mint_address,
+            Account {
+                lamports: Rent::default().minimum_balance(SplMint::LEN),
+                data: mint_data,
+                owner: spl_token::id(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    }
+
+    /// Helper: add a pre-serialized SPL Token Account (ATA) with a given balance
+    fn add_spl_token_account(
+        program_test: &mut ProgramTest,
+        ata_address: Pubkey,
+        mint: Pubkey,
+        owner: Pubkey,
+        amount: u64,
+    ) {
+        let mut token_data = vec![0u8; SplTokenAccount::LEN];
+        let token_state = SplTokenAccount {
+            mint,
+            owner,
+            amount,
+            delegate: solana_program::program_option::COption::None,
+            state: spl_token::state::AccountState::Initialized,
+            is_native: solana_program::program_option::COption::None,
+            delegated_amount: 0,
+            close_authority: solana_program::program_option::COption::None,
+        };
+        SplTokenAccount::pack(token_state, &mut token_data).unwrap();
+
+        program_test.add_account(
+            ata_address,
+            Account {
+                lamports: Rent::default().minimum_balance(SplTokenAccount::LEN),
+                data: token_data,
+                owner: spl_token::id(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn test_withdraw_tokens_success() {
+        let mut program_test = setup_programs();
+
+        // Setup authority and manager
+        let authority = Keypair::new();
+        let manager = Keypair::new();
+        let manager_address = manager.pubkey();
+        let auth_id = 0u64;
+
+        add_manager_account(&mut program_test, manager_address, authority.pubkey());
+
+        // Create a test SPL mint
+        let mint_keypair = Keypair::new();
+        let mint_address = mint_keypair.pubkey();
+        add_spl_mint_account(&mut program_test, mint_address);
+
+        // Derive managed_miner_auth PDA
+        let (managed_miner_auth_address, _bump) = managed_miner_auth_pda(manager_address, auth_id);
+
+        // Create source ATA (managed_miner_auth's token account) with balance
+        let source_ata = spl_associated_token_account::get_associated_token_address(
+            &managed_miner_auth_address,
+            &mint_address,
+        );
+        let token_amount = 500_000_000u64; // 0.5 tokens
+        add_spl_token_account(
+            &mut program_test,
+            source_ata,
+            mint_address,
+            managed_miner_auth_address,
+            token_amount,
+        );
+
+        // Fund authority
+        program_test.add_account(
+            authority.pubkey(),
+            Account {
+                lamports: 10_000_000_000,
+                data: vec![],
+                owner: solana_sdk::system_program::id(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+
+        let ctx = program_test.start_with_context().await;
+
+        // Build and send WithdrawTokens instruction
+        let ix = evore::instruction::withdraw_tokens(
+            authority.pubkey(),
+            manager_address,
+            auth_id,
+            mint_address,
+        );
+
+        let tx = Transaction::new_signed_with_payer(
+            &[ix],
+            Some(&authority.pubkey()),
+            &[&authority],
+            ctx.last_blockhash,
+        );
+
+        ctx.banks_client.process_transaction(tx).await.unwrap();
+
+        // Verify destination ATA was created and received all tokens
+        let destination_ata = spl_associated_token_account::get_associated_token_address(
+            &authority.pubkey(),
+            &mint_address,
+        );
+        let dest_account = ctx
+            .banks_client
+            .get_account(destination_ata)
+            .await
+            .unwrap()
+            .expect("destination ATA should exist");
+
+        let dest_token = SplTokenAccount::unpack(&dest_account.data).unwrap();
+        assert_eq!(
+            dest_token.amount, token_amount,
+            "destination ATA should have the full token balance"
+        );
+
+        // Verify source ATA is now empty
+        let src_account = ctx
+            .banks_client
+            .get_account(source_ata)
+            .await
+            .unwrap()
+            .expect("source ATA should still exist");
+
+        let src_token = SplTokenAccount::unpack(&src_account.data).unwrap();
+        assert_eq!(src_token.amount, 0, "source ATA should be empty after withdrawal");
+    }
+
+    #[tokio::test]
+    async fn test_withdraw_tokens_wrong_authority() {
+        let mut program_test = setup_programs();
+
+        // Setup real authority and an imposter
+        let real_authority = Keypair::new();
+        let imposter = Keypair::new();
+        let manager = Keypair::new();
+        let manager_address = manager.pubkey();
+        let auth_id = 0u64;
+
+        add_manager_account(&mut program_test, manager_address, real_authority.pubkey());
+
+        // Create a test SPL mint
+        let mint_keypair = Keypair::new();
+        let mint_address = mint_keypair.pubkey();
+        add_spl_mint_account(&mut program_test, mint_address);
+
+        // Derive managed_miner_auth PDA
+        let (managed_miner_auth_address, _bump) = managed_miner_auth_pda(manager_address, auth_id);
+
+        // Create source ATA with balance
+        let source_ata = spl_associated_token_account::get_associated_token_address(
+            &managed_miner_auth_address,
+            &mint_address,
+        );
+        let token_amount = 500_000_000u64;
+        add_spl_token_account(
+            &mut program_test,
+            source_ata,
+            mint_address,
+            managed_miner_auth_address,
+            token_amount,
+        );
+
+        // Fund imposter (not the real authority)
+        program_test.add_account(
+            imposter.pubkey(),
+            Account {
+                lamports: 10_000_000_000,
+                data: vec![],
+                owner: solana_sdk::system_program::id(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+
+        let ctx = program_test.start_with_context().await;
+
+        // Build instruction with imposter as signer - should fail
+        let ix = evore::instruction::withdraw_tokens(
+            imposter.pubkey(),
+            manager_address,
+            auth_id,
+            mint_address,
+        );
+
+        let tx = Transaction::new_signed_with_payer(
+            &[ix],
+            Some(&imposter.pubkey()),
+            &[&imposter],
+            ctx.last_blockhash,
+        );
+
+        let result = ctx.banks_client.process_transaction(tx).await;
+        assert!(
+            result.is_err(),
+            "transaction should fail when signer is not the manager authority"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_withdraw_tokens_manager_not_initialized() {
+        let mut program_test = setup_programs();
+
+        let authority = Keypair::new();
+        let manager = Keypair::new();
+        let manager_address = manager.pubkey();
+        let auth_id = 0u64;
+
+        // Do NOT add a manager account - leave it uninitialized (empty)
+        program_test.add_account(
+            manager_address,
+            Account {
+                lamports: 1_000_000,
+                data: vec![],
+                owner: solana_sdk::system_program::id(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+
+        // Create a test SPL mint
+        let mint_keypair = Keypair::new();
+        let mint_address = mint_keypair.pubkey();
+        add_spl_mint_account(&mut program_test, mint_address);
+
+        // Derive managed_miner_auth PDA
+        let (managed_miner_auth_address, _bump) = managed_miner_auth_pda(manager_address, auth_id);
+
+        // Create source ATA with balance
+        let source_ata = spl_associated_token_account::get_associated_token_address(
+            &managed_miner_auth_address,
+            &mint_address,
+        );
+        let token_amount = 500_000_000u64;
+        add_spl_token_account(
+            &mut program_test,
+            source_ata,
+            mint_address,
+            managed_miner_auth_address,
+            token_amount,
+        );
+
+        // Fund authority
+        program_test.add_account(
+            authority.pubkey(),
+            Account {
+                lamports: 10_000_000_000,
+                data: vec![],
+                owner: solana_sdk::system_program::id(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+
+        let ctx = program_test.start_with_context().await;
+
+        // Build instruction - should fail because manager is not initialized
+        let ix = evore::instruction::withdraw_tokens(
+            authority.pubkey(),
+            manager_address,
+            auth_id,
+            mint_address,
+        );
+
+        let tx = Transaction::new_signed_with_payer(
+            &[ix],
+            Some(&authority.pubkey()),
+            &[&authority],
+            ctx.last_blockhash,
+        );
+
+        let result = ctx.banks_client.process_transaction(tx).await;
+        assert!(
+            result.is_err(),
+            "transaction should fail when manager is not initialized"
+        );
     }
 }
