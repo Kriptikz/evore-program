@@ -102,6 +102,18 @@ pub enum EvoreError {
     /// Deployment amount exceeds max_per_round limit
     #[error("Exceeds max per round: total deployed would exceed max_per_round limit")]
     ExceedsMaxPerRound = 19,
+
+    /// The strategy type byte does not map to a known variant
+    #[error("Invalid strategy type: unrecognized strategy type discriminant")]
+    InvalidStrategyType = 20,
+
+    /// The strategy_data fields are invalid for the given strategy type
+    #[error("Invalid strategy data: parameters out of range for strategy type")]
+    InvalidStrategyData = 21,
+
+    /// The strategy deployer account has not been initialized
+    #[error("Strategy deployer not initialized: create strategy deployer first")]
+    StratDeployerNotInitialized = 22,
 }
 
 error!(EvoreError);

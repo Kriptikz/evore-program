@@ -1565,6 +1565,7 @@ dependencies = [
  "bytemuck_derive",
  "num_enum",
  "serde",
+ "serde-big-array",
  "solana-program",
  "solana-program-test",
  "solana-sdk",

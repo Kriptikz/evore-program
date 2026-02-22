@@ -1,13 +1,15 @@
 use steel::*;
 use serde::{Serialize, Deserialize};
+use serde_big_array::BigArray;
 
-use crate::consts::{MANAGED_MINER_AUTH, DEPLOYER};
+use crate::consts::{MANAGED_MINER_AUTH, DEPLOYER, STRATEGY_DEPLOYER};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 pub enum EvoreAccount {
     Manager = 100,
     Deployer = 101,
+    StrategyDeployer = 102,
 }
 
 #[repr(C)]
@@ -50,6 +52,28 @@ pub struct Deployer {
 }
 
 account!(EvoreAccount, Deployer);
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable, Serialize, Deserialize)]
+pub struct StrategyDeployer {
+    pub manager_key: Pubkey,
+    pub deploy_authority: Pubkey,
+    pub bps_fee: u64,
+    pub flat_fee: u64,
+    pub expected_bps_fee: u64,
+    pub expected_flat_fee: u64,
+    pub max_per_round: u64,
+    pub strategy_type: u8,
+    #[serde(with = "BigArray")]
+    pub strategy_data: [u8; 64],
+    pub _padding: [u8; 7],
+}
+
+account!(EvoreAccount, StrategyDeployer);
+
+pub fn strategy_deployer_pda(manager_key: Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[STRATEGY_DEPLOYER, &manager_key.to_bytes()], &crate::ID)
+}
 
 pub fn managed_miner_auth_pda(manager: Pubkey, auth_id: u64) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[MANAGED_MINER_AUTH, &manager.to_bytes(), &auth_id.to_le_bytes()], &crate::ID)

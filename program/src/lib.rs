@@ -13,6 +13,7 @@ pub mod state;
 pub mod consts;
 pub mod ore_api;
 pub mod entropy_api;
+pub mod validation;
 
 declare_id!("8jaLKWLJAj5jVCZbxpe3zRUvLB3LD48MRtaQ2AjfCfxa");
 
@@ -83,6 +84,24 @@ pub fn process_instruction(
         }
         Instructions::WithdrawTokens => {
             process_withdraw_tokens::process_withdraw_tokens(accounts, data)?;
+        }
+        Instructions::CreateStratDeployer => {
+            process_create_strat_deployer::process_create_strat_deployer(accounts, data)?;
+        }
+        Instructions::UpdateStratDeployer => {
+            process_update_strat_deployer::process_update_strat_deployer(accounts, data)?;
+        }
+        Instructions::MMStratAutodeploy => {
+            process_mm_strat_autodeploy::process_mm_strat_autodeploy(accounts, data)?;
+        }
+        Instructions::MMStratFullAutodeploy => {
+            process_mm_strat_full_autodeploy::process_mm_strat_full_autodeploy(accounts, data)?;
+        }
+        Instructions::MMStratAutocheckpoint => {
+            process_mm_strat_autocheckpoint::process_mm_strat_autocheckpoint(accounts, data)?;
+        }
+        Instructions::RecycleStratSol => {
+            process_recycle_strat_sol::process_recycle_strat_sol(accounts, data)?;
         }
     }
 

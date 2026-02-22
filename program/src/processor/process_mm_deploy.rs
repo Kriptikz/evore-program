@@ -378,7 +378,7 @@ pub fn process_mm_deploy(
 ///
 /// Formula to own P% of square: amount = P * T / (10000 - P)
 /// Max affordable percentage: P_max = 10000 * B / (Total + B)
-fn calculate_percentage_deployments(
+pub(crate) fn calculate_percentage_deployments(
     round: &Round,
     bankroll: u64,
     percentage: u64,      // In basis points (1000 = 10%)

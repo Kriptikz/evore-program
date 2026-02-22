@@ -1,7 +1,7 @@
 use spl_associated_token_account::get_associated_token_address;
 use steel::*;
 
-use crate::{consts::FEE_COLLECTOR, entropy_api, ore_api::{self, automation_pda, board_pda, config_pda, miner_pda, round_pda, treasury_pda}, state::{managed_miner_auth_pda, deployer_pda}};
+use crate::{consts::FEE_COLLECTOR, entropy_api, ore_api::{self, automation_pda, board_pda, config_pda, miner_pda, round_pda, treasury_pda}, state::{managed_miner_auth_pda, deployer_pda, strategy_deployer_pda}};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, TryFromPrimitive)]
@@ -22,6 +22,12 @@ pub enum Instructions {
     TransferManager = 13,
     MMCreateMiner = 14,
     WithdrawTokens = 15,
+    CreateStratDeployer = 16,
+    UpdateStratDeployer = 17,
+    MMStratAutodeploy = 18,
+    MMStratFullAutodeploy = 19,
+    MMStratAutocheckpoint = 20,
+    RecycleStratSol = 21,
 }
 
 /// Deployment strategy enum with associated data
@@ -1013,6 +1019,310 @@ pub fn withdraw_tokens(signer: Pubkey, manager: Pubkey, auth_id: u64, mint: Pubk
         data: WithdrawTokens {
             auth_id: auth_id.to_le_bytes(),
             bump,
+        }.to_bytes(),
+    }
+}
+
+// ============================================================================
+// CreateStratDeployer Instruction
+// ============================================================================
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct CreateStratDeployer {
+    pub bps_fee: [u8; 8],
+    pub flat_fee: [u8; 8],
+    pub max_per_round: [u8; 8],
+    pub strategy_type: u8,
+    pub strategy_data: [u8; 64],
+    pub _pad: [u8; 7],
+}
+
+instruction!(Instructions, CreateStratDeployer);
+
+pub fn create_strat_deployer(
+    authority: Pubkey,
+    manager: Pubkey,
+    deploy_authority: Pubkey,
+    bps_fee: u64,
+    flat_fee: u64,
+    max_per_round: u64,
+    strategy_type: u8,
+    strategy_data: [u8; 64],
+) -> Instruction {
+    let (strat_deployer_address, _) = crate::state::strategy_deployer_pda(manager);
+
+    Instruction {
+        program_id: crate::id(),
+        accounts: vec![
+            AccountMeta::new(authority, true),
+            AccountMeta::new_readonly(manager, false),
+            AccountMeta::new(strat_deployer_address, false),
+            AccountMeta::new_readonly(deploy_authority, false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
+        data: CreateStratDeployer {
+            bps_fee: bps_fee.to_le_bytes(),
+            flat_fee: flat_fee.to_le_bytes(),
+            max_per_round: max_per_round.to_le_bytes(),
+            strategy_type,
+            strategy_data,
+            _pad: [0; 7],
+        }.to_bytes(),
+    }
+}
+
+// ============================================================================
+// UpdateStratDeployer Instruction
+// ============================================================================
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct UpdateStratDeployer {
+    pub bps_fee: [u8; 8],
+    pub flat_fee: [u8; 8],
+    pub expected_bps_fee: [u8; 8],
+    pub expected_flat_fee: [u8; 8],
+    pub max_per_round: [u8; 8],
+    pub strategy_type: u8,
+    pub strategy_data: [u8; 64],
+    pub _pad: [u8; 7],
+}
+
+instruction!(Instructions, UpdateStratDeployer);
+
+pub fn update_strat_deployer(
+    signer: Pubkey,
+    manager: Pubkey,
+    new_deploy_authority: Pubkey,
+    bps_fee: u64,
+    flat_fee: u64,
+    expected_bps_fee: u64,
+    expected_flat_fee: u64,
+    max_per_round: u64,
+    strategy_type: u8,
+    strategy_data: [u8; 64],
+) -> Instruction {
+    let (strat_deployer_address, _) = crate::state::strategy_deployer_pda(manager);
+
+    Instruction {
+        program_id: crate::id(),
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new_readonly(manager, false),
+            AccountMeta::new(strat_deployer_address, false),
+            AccountMeta::new_readonly(new_deploy_authority, false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
+        data: UpdateStratDeployer {
+            bps_fee: bps_fee.to_le_bytes(),
+            flat_fee: flat_fee.to_le_bytes(),
+            expected_bps_fee: expected_bps_fee.to_le_bytes(),
+            expected_flat_fee: expected_flat_fee.to_le_bytes(),
+            max_per_round: max_per_round.to_le_bytes(),
+            strategy_type,
+            strategy_data,
+            _pad: [0; 7],
+        }.to_bytes(),
+    }
+}
+
+// ============================================================================
+// MMStratAutocheckpoint - Checkpoint callable by strat deploy_authority
+// ============================================================================
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct MMStratAutocheckpoint {
+    pub auth_id: [u8; 8],
+    pub bump: u8,
+}
+
+instruction!(Instructions, MMStratAutocheckpoint);
+
+pub fn mm_strat_autocheckpoint(
+    signer: Pubkey,
+    manager: Pubkey,
+    auth_id: u64,
+    bump: u8,
+) -> Instruction {
+    let (strat_deployer_address, _) = strategy_deployer_pda(manager);
+    let (managed_miner_auth_address, _) = managed_miner_auth_pda(manager, auth_id);
+    let ore_miner_address = miner_pda(managed_miner_auth_address);
+
+    Instruction {
+        program_id: crate::id(),
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(manager, false),
+            AccountMeta::new(strat_deployer_address, false),
+            AccountMeta::new(managed_miner_auth_address, false),
+            AccountMeta::new(ore_miner_address.0, false),
+            AccountMeta::new_readonly(ore_api::id(), false),
+        ],
+        data: MMStratAutocheckpoint {
+            auth_id: auth_id.to_le_bytes(),
+            bump,
+        }.to_bytes(),
+    }
+}
+
+// ============================================================================
+// RecycleStratSol - Recycle SOL callable by strat deploy_authority
+// ============================================================================
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct RecycleStratSol {
+    pub auth_id: [u8; 8],
+}
+
+instruction!(Instructions, RecycleStratSol);
+
+pub fn recycle_strat_sol(
+    signer: Pubkey,
+    manager: Pubkey,
+    auth_id: u64,
+) -> Instruction {
+    let (strat_deployer_address, _) = strategy_deployer_pda(manager);
+    let (managed_miner_auth_address, _) = managed_miner_auth_pda(manager, auth_id);
+    let ore_miner_address = miner_pda(managed_miner_auth_address);
+
+    Instruction {
+        program_id: crate::id(),
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(manager, false),
+            AccountMeta::new(strat_deployer_address, false),
+            AccountMeta::new(managed_miner_auth_address, false),
+            AccountMeta::new(ore_miner_address.0, false),
+            AccountMeta::new_readonly(ore_api::id(), false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
+        data: RecycleStratSol {
+            auth_id: auth_id.to_le_bytes(),
+        }.to_bytes(),
+    }
+}
+
+// ============================================================================
+// MMStratAutodeploy - Strategy-based autodeploy
+// ============================================================================
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct MMStratAutodeploy {
+    pub auth_id: [u8; 8],
+    pub amount: [u8; 8],
+    pub squares_mask: [u8; 4],
+    pub extra: [u8; 4],
+}
+
+instruction!(Instructions, MMStratAutodeploy);
+
+pub fn mm_strat_autodeploy(
+    deploy_authority: Pubkey,
+    manager: Pubkey,
+    auth_id: u64,
+    amount: u64,
+    squares_mask: u32,
+    extra: u32,
+) -> Instruction {
+    let (strat_deployer_address, _) = strategy_deployer_pda(manager);
+    let (managed_miner_auth_address, _) = managed_miner_auth_pda(manager, auth_id);
+    let ore_miner_address = miner_pda(managed_miner_auth_address);
+    let automation_address = automation_pda(managed_miner_auth_address).0;
+    let board_address = board_pda().0;
+    let config_address = config_pda().0;
+    let round_address = round_pda(0).0;
+    let entropy_var_address = entropy_api::var_pda(board_address, 0).0;
+
+    Instruction {
+        program_id: crate::id(),
+        accounts: vec![
+            AccountMeta::new(deploy_authority, true),              // 0: deploy_authority (signer)
+            AccountMeta::new(manager, false),                      // 1: manager
+            AccountMeta::new(strat_deployer_address, false),       // 2: strat_deployer PDA
+            AccountMeta::new(managed_miner_auth_address, false),   // 3: managed_miner_auth PDA
+            AccountMeta::new(ore_miner_address.0, false),          // 4: ore_miner
+            AccountMeta::new(FEE_COLLECTOR, false),                // 5: fee_collector
+            AccountMeta::new(automation_address, false),           // 6: automation
+            AccountMeta::new(config_address, false),               // 7: config
+            AccountMeta::new(board_address, false),                // 8: board
+            AccountMeta::new(round_address, false),                // 9: round
+            AccountMeta::new(entropy_var_address, false),          // 10: entropy_var
+            AccountMeta::new_readonly(ore_api::id(), false),       // 11: ore_program
+            AccountMeta::new_readonly(entropy_api::id(), false),   // 12: entropy_program
+            AccountMeta::new_readonly(system_program::id(), false), // 13: system_program
+        ],
+        data: MMStratAutodeploy {
+            auth_id: auth_id.to_le_bytes(),
+            amount: amount.to_le_bytes(),
+            squares_mask: squares_mask.to_le_bytes(),
+            extra: extra.to_le_bytes(),
+        }.to_bytes(),
+    }
+}
+
+// ============================================================================
+// MMStratFullAutodeploy - Strategy-based full autodeploy (checkpoint + recycle + deploy)
+// ============================================================================
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct MMStratFullAutodeploy {
+    pub auth_id: [u8; 8],
+    pub amount: [u8; 8],
+    pub squares_mask: [u8; 4],
+    pub extra: [u8; 4],
+}
+
+instruction!(Instructions, MMStratFullAutodeploy);
+
+pub fn mm_strat_full_autodeploy(
+    deploy_authority: Pubkey,
+    manager: Pubkey,
+    auth_id: u64,
+    amount: u64,
+    squares_mask: u32,
+    extra: u32,
+) -> Instruction {
+    let (strat_deployer_address, _) = strategy_deployer_pda(manager);
+    let (managed_miner_auth_address, _) = managed_miner_auth_pda(manager, auth_id);
+    let ore_miner_address = miner_pda(managed_miner_auth_address);
+    let automation_address = automation_pda(managed_miner_auth_address).0;
+    let board_address = board_pda().0;
+    let config_address = config_pda().0;
+    let round_address = round_pda(0).0;
+    let checkpoint_round_address = round_pda(0).0;
+    let treasury_address = ore_api::TREASURY_ADDRESS;
+    let entropy_var_address = entropy_api::var_pda(board_address, 0).0;
+
+    Instruction {
+        program_id: crate::id(),
+        accounts: vec![
+            AccountMeta::new(deploy_authority, true),
+            AccountMeta::new(manager, false),
+            AccountMeta::new(strat_deployer_address, false),
+            AccountMeta::new(managed_miner_auth_address, false),
+            AccountMeta::new(ore_miner_address.0, false),
+            AccountMeta::new(FEE_COLLECTOR, false),
+            AccountMeta::new(automation_address, false),
+            AccountMeta::new(config_address, false),
+            AccountMeta::new(board_address, false),
+            AccountMeta::new(round_address, false),
+            AccountMeta::new(checkpoint_round_address, false),
+            AccountMeta::new(treasury_address, false),
+            AccountMeta::new(entropy_var_address, false),
+            AccountMeta::new_readonly(ore_api::id(), false),
+            AccountMeta::new_readonly(entropy_api::id(), false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
+        data: MMStratFullAutodeploy {
+            auth_id: auth_id.to_le_bytes(),
+            amount: amount.to_le_bytes(),
+            squares_mask: squares_mask.to_le_bytes(),
+            extra: extra.to_le_bytes(),
         }.to_bytes(),
     }
 }
