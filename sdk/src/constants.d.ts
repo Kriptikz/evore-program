@@ -6,6 +6,7 @@ export declare const FEE_COLLECTOR: PublicKey;
 export declare const DEPLOY_FEE: bigint;
 export declare const MANAGED_MINER_AUTH_SEED: string;
 export declare const DEPLOYER_SEED: string;
+export declare const STRATEGY_DEPLOYER_SEED: string;
 
 // ORE Program
 export declare const ORE_PROGRAM_ID: PublicKey;
@@ -32,6 +33,7 @@ export declare const SYSTEM_PROGRAM_ID: PublicKey;
 // Account Discriminators
 export declare const MANAGER_DISCRIMINATOR: number;
 export declare const DEPLOYER_DISCRIMINATOR: number;
+export declare const STRATEGY_DEPLOYER_DISCRIMINATOR: number;
 
 // Instruction Discriminators
 export declare const EvoreInstruction: {
@@ -49,6 +51,23 @@ export declare const EvoreInstruction: {
   MMAutocheckpoint: number;
   MMFullAutodeploy: number;
   TransferManager: number;
+  WithdrawTokens: number;
+  CreateStratDeployer: number;
+  UpdateStratDeployer: number;
+  MMStratAutodeploy: number;
+  MMStratFullAutodeploy: number;
+  MMStratAutocheckpoint: number;
+  RecycleStratSol: number;
+};
+
+// Strategy Types
+export declare const StrategyType: {
+  Ev: number;
+  Percentage: number;
+  Manual: number;
+  Split: number;
+  DynamicSplitPercentage: number;
+  DynamicEv: number;
 };
 
 // Helpers

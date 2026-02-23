@@ -19,6 +19,7 @@ const DEPLOY_FEE = 1000n;
 // Evore PDA seeds
 const MANAGED_MINER_AUTH_SEED = "managed-miner-auth";
 const DEPLOYER_SEED = "deployer";
+const STRATEGY_DEPLOYER_SEED = "strategy-deployer";
 
 // =============================================================================
 // ORE Program (v3)
@@ -80,6 +81,9 @@ const MANAGER_DISCRIMINATOR = 100;
 /** Deployer account discriminator */
 const DEPLOYER_DISCRIMINATOR = 101;
 
+/** Strategy Deployer account discriminator */
+const STRATEGY_DEPLOYER_DISCRIMINATOR = 102;
+
 // =============================================================================
 // Instruction Discriminators
 // =============================================================================
@@ -101,6 +105,23 @@ const EvoreInstruction = {
   MMFullAutodeploy: 12,
   TransferManager: 13,
   MMCreateMiner: 14,
+  WithdrawTokens: 15,
+  CreateStratDeployer: 16,
+  UpdateStratDeployer: 17,
+  MMStratAutodeploy: 18,
+  MMStratFullAutodeploy: 19,
+  MMStratAutocheckpoint: 20,
+  RecycleStratSol: 21,
+};
+
+/** Strategy type discriminators (must match program) */
+const StrategyType = {
+  Ev: 0,
+  Percentage: 1,
+  Manual: 2,
+  Split: 3,
+  DynamicSplitPercentage: 4,
+  DynamicEv: 5,
 };
 
 // =============================================================================
@@ -123,6 +144,7 @@ module.exports = {
   DEPLOY_FEE,
   MANAGED_MINER_AUTH_SEED,
   DEPLOYER_SEED,
+  STRATEGY_DEPLOYER_SEED,
   
   // ORE
   ORE_PROGRAM_ID,
@@ -149,7 +171,9 @@ module.exports = {
   // Discriminators
   MANAGER_DISCRIMINATOR,
   DEPLOYER_DISCRIMINATOR,
+  STRATEGY_DEPLOYER_DISCRIMINATOR,
   EvoreInstruction,
+  StrategyType,
   
   // Helpers
   MIN_AUTODEPLOY_BALANCE_FIRST,

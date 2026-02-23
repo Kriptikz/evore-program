@@ -19,10 +19,24 @@ export interface Deployer {
   maxPerRound: bigint;
 }
 
+export interface StrategyDeployer {
+  managerKey: PublicKey;
+  deployAuthority: PublicKey;
+  bpsFee: bigint;
+  flatFee: bigint;
+  expectedBpsFee: bigint;
+  expectedFlatFee: bigint;
+  maxPerRound: bigint;
+  strategyType: number;
+  strategyData: Buffer;
+}
+
 // Account Decoders
 export declare function decodeManager(data: Buffer | Uint8Array): Manager;
 
 export declare function decodeDeployer(data: Buffer | Uint8Array): Deployer;
+
+export declare function decodeStrategyDeployer(data: Buffer | Uint8Array): StrategyDeployer;
 
 export declare function decodeOreBoard(data: Buffer | Uint8Array): {
   roundId: bigint;

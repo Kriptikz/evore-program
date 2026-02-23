@@ -27,13 +27,15 @@ export declare function buildSetupAutoMinerInstructions(
 export declare function buildDepositInstructions(
   signer: PublicKey,
   manager: PublicKey,
-  amount: bigint
+  amount: bigint,
+  authId?: bigint
 ): TransactionInstruction[];
 
 export declare function buildWithdrawInstructions(
   signer: PublicKey,
   manager: PublicKey,
-  amount: bigint
+  amount: bigint,
+  authId?: bigint
 ): TransactionInstruction[];
 
 // Claims
@@ -105,4 +107,62 @@ export declare function buildBatchedAutodeployInstructions(
   executor: PublicKey,
   deploys: DeployConfig[],
   roundId: bigint
+): TransactionInstruction[];
+
+// Strategy Setup
+export declare function buildCreateStratAutoMinerInstructions(
+  signer: PublicKey,
+  managerAccount: PublicKey,
+  deployAuthority: PublicKey,
+  bpsFee: bigint,
+  flatFee?: bigint,
+  strategyType?: number,
+  strategyData?: Buffer
+): TransactionInstruction[];
+
+export declare function buildSetupStratAutoMinerInstructions(
+  signer: PublicKey,
+  managerAccount: PublicKey,
+  deployAuthority: PublicKey,
+  bpsFee: bigint,
+  flatFee: bigint,
+  depositAmount: bigint,
+  strategyType?: number,
+  strategyData?: Buffer
+): TransactionInstruction[];
+
+// Strategy Executor/Crank
+export declare function buildStratAutodeployInstructions(
+  executor: PublicKey,
+  manager: PublicKey,
+  authId: bigint,
+  roundId: bigint,
+  amount: bigint,
+  squaresMask: number,
+  extra?: number
+): TransactionInstruction[];
+
+export declare function buildStratFullAutodeployInstructions(
+  executor: PublicKey,
+  manager: PublicKey,
+  authId: bigint,
+  roundId: bigint,
+  checkpointRoundId: bigint,
+  amount: bigint,
+  squaresMask: number,
+  extra?: number
+): TransactionInstruction[];
+
+export declare function buildRecycleStratSolInstructions(
+  executor: PublicKey,
+  manager: PublicKey,
+  authId: bigint
+): TransactionInstruction[];
+
+// Withdraw Tokens
+export declare function buildWithdrawTokensInstructions(
+  signer: PublicKey,
+  manager: PublicKey,
+  authId?: bigint,
+  mint?: PublicKey
 ): TransactionInstruction[];

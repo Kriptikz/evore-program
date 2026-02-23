@@ -39,6 +39,28 @@ function decodeDeployer(data) {
 }
 
 /**
+ * Decodes a StrategyDeployer account from raw account data
+ * Size: 185 bytes (8 discriminator + 32 manager_key + 32 deploy_authority + 8 bps_fee + 8 flat_fee + 8 expected_bps_fee + 8 expected_flat_fee + 8 max_per_round + 1 strategy_type + 64 strategy_data + 8 padding)
+ * @param {Buffer|Uint8Array} data - Raw account data from getAccountInfo
+ * @returns {{ managerKey: PublicKey, deployAuthority: PublicKey, bpsFee: bigint, flatFee: bigint, expectedBpsFee: bigint, expectedFlatFee: bigint, maxPerRound: bigint, strategyType: number, strategyData: Buffer }}
+ */
+function decodeStrategyDeployer(data) {
+  const buffer = Buffer.from(data);
+  
+  const managerKey = new PublicKey(buffer.slice(8, 40));
+  const deployAuthority = new PublicKey(buffer.slice(40, 72));
+  const bpsFee = buffer.readBigUInt64LE(72);
+  const flatFee = buffer.readBigUInt64LE(80);
+  const expectedBpsFee = buffer.readBigUInt64LE(88);
+  const expectedFlatFee = buffer.readBigUInt64LE(96);
+  const maxPerRound = buffer.readBigUInt64LE(104);
+  const strategyType = buffer[112];
+  const strategyData = Buffer.from(buffer.slice(113, 177));
+  
+  return { managerKey, deployAuthority, bpsFee, flatFee, expectedBpsFee, expectedFlatFee, maxPerRound, strategyType, strategyData };
+}
+
+/**
  * Decodes an ORE Board account from raw account data
  * @param {Buffer|Uint8Array} data - Raw account data from getAccountInfo
  * @returns {{ roundId: bigint, startSlot: bigint, endSlot: bigint, epochId: bigint }}
@@ -325,6 +347,7 @@ module.exports = {
   // Decoders
   decodeManager,
   decodeDeployer,
+  decodeStrategyDeployer,
   decodeOreBoard,
   decodeOreRound,
   decodeOreMiner,

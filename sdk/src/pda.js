@@ -8,6 +8,7 @@ const {
   ORE_MINT_ADDRESS,
   MANAGED_MINER_AUTH_SEED,
   DEPLOYER_SEED,
+  STRATEGY_DEPLOYER_SEED,
   ORE_MINER_SEED,
   ORE_BOARD_SEED,
   ORE_ROUND_SEED,
@@ -58,6 +59,21 @@ function getDeployerPda(manager) {
   return PublicKey.findProgramAddressSync(
     [
       Buffer.from(DEPLOYER_SEED),
+      manager.toBuffer(),
+    ],
+    EVORE_PROGRAM_ID
+  );
+}
+
+/**
+ * Derives the strategy deployer PDA for a manager
+ * @param {PublicKey} manager - The manager account address
+ * @returns {[PublicKey, number]} - [PDA address, bump seed]
+ */
+function getStrategyDeployerPda(manager) {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from(STRATEGY_DEPLOYER_SEED),
       manager.toBuffer(),
     ],
     EVORE_PROGRAM_ID
@@ -202,6 +218,7 @@ module.exports = {
   // Evore PDAs
   getManagedMinerAuthPda,
   getDeployerPda,
+  getStrategyDeployerPda,
   
   // ORE PDAs
   getOreMinerPda,

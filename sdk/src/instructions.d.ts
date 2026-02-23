@@ -152,6 +152,73 @@ export declare function mmCreateMinerInstruction(
   authId?: bigint
 ): TransactionInstruction;
 
+// Withdraw Tokens (manager authority)
+export declare function withdrawTokensInstruction(
+  signer: PublicKey,
+  manager: PublicKey,
+  authId?: bigint,
+  mint?: PublicKey
+): TransactionInstruction;
+
+// Strategy Deployer (manager authority creates, both can update)
+export declare function createStratDeployerInstruction(
+  signer: PublicKey,
+  manager: PublicKey,
+  deployAuthority: PublicKey,
+  bpsFee: bigint,
+  flatFee?: bigint,
+  maxPerRound?: bigint,
+  strategyType?: number,
+  strategyData?: Buffer
+): TransactionInstruction;
+
+export declare function updateStratDeployerInstruction(
+  signer: PublicKey,
+  manager: PublicKey,
+  newDeployAuthority: PublicKey,
+  newBpsFee: bigint,
+  newFlatFee?: bigint,
+  newExpectedBpsFee?: bigint,
+  newExpectedFlatFee?: bigint,
+  newMaxPerRound?: bigint,
+  strategyType?: number,
+  strategyData?: Buffer
+): TransactionInstruction;
+
+// Strategy Autodeploy (deploy authority - for executors)
+export declare function mmStratAutodeployInstruction(
+  signer: PublicKey,
+  manager: PublicKey,
+  authId: bigint,
+  roundId: bigint,
+  amount: bigint,
+  squaresMask: number,
+  extra?: number
+): TransactionInstruction;
+
+export declare function mmStratFullAutodeployInstruction(
+  signer: PublicKey,
+  manager: PublicKey,
+  authId: bigint,
+  roundId: bigint,
+  checkpointRoundId: bigint,
+  amount: bigint,
+  squaresMask: number,
+  extra?: number
+): TransactionInstruction;
+
+export declare function mmStratAutocheckpointInstruction(
+  signer: PublicKey,
+  manager: PublicKey,
+  authId: bigint
+): TransactionInstruction;
+
+export declare function recycleStratSolInstruction(
+  signer: PublicKey,
+  manager: PublicKey,
+  authId: bigint
+): TransactionInstruction;
+
 // Helpers
 export declare function squaresToMask(squares: boolean[]): number;
 export declare function maskToSquares(mask: number): boolean[];

@@ -22,6 +22,12 @@ const {
   mmAutodeployInstruction,
   mmAutocheckpointInstruction,
   recycleSolInstruction,
+  withdrawTokensInstruction,
+  createStratDeployerInstruction,
+  mmStratAutodeployInstruction,
+  mmStratFullAutodeployInstruction,
+  mmStratAutocheckpointInstruction,
+  recycleStratSolInstruction,
 } = require("./instructions");
 
 // =============================================================================
@@ -79,7 +85,7 @@ function buildSetupAutoMinerInstructions(
 ) {
   const createManager = createManagerInstruction(signer, managerAccount);
   const createDeployer = createDeployerInstruction(signer, managerAccount, deployAuthority, bpsFee, flatFee);
-  const deposit = depositAutodeployBalanceInstruction(signer, managerAccount, depositAmount);
+  const deposit = depositAutodeployBalanceInstruction(signer, managerAccount, 0n, depositAmount);
   
   return [createManager, createDeployer, deposit];
 }
@@ -98,8 +104,8 @@ function buildSetupAutoMinerInstructions(
  * @param {bigint} amount - Amount to deposit in lamports
  * @returns {import("@solana/web3.js").TransactionInstruction[]}
  */
-function buildDepositInstructions(signer, manager, amount) {
-  const deposit = depositAutodeployBalanceInstruction(signer, manager, amount);
+function buildDepositInstructions(signer, manager, amount, authId = 0n) {
+  const deposit = depositAutodeployBalanceInstruction(signer, manager, authId, amount);
   return [deposit];
 }
 
@@ -113,8 +119,8 @@ function buildDepositInstructions(signer, manager, amount) {
  * @param {bigint} amount - Amount to withdraw in lamports
  * @returns {import("@solana/web3.js").TransactionInstruction[]}
  */
-function buildWithdrawInstructions(signer, manager, amount) {
-  const withdraw = withdrawAutodeployBalanceInstruction(signer, manager, amount);
+function buildWithdrawInstructions(signer, manager, amount, authId = 0n) {
+  const withdraw = withdrawAutodeployBalanceInstruction(signer, manager, authId, amount);
   return [withdraw];
 }
 
@@ -315,6 +321,168 @@ function buildBatchedAutodeployInstructions(executor, deploys, roundId) {
   return instructions;
 }
 
+// =============================================================================
+// Strategy AutoMiner Setup
+// =============================================================================
+
+/**
+ * Builds instructions to create a new Strategy AutoMiner (Manager + StratDeployer)
+ * 
+ * @param {import("@solana/web3.js").PublicKey} signer - User's wallet
+ * @param {import("@solana/web3.js").PublicKey} managerAccount - New keypair for manager (must also sign!)
+ * @param {import("@solana/web3.js").PublicKey} deployAuthority - Platform's executor pubkey
+ * @param {bigint} bpsFee - Max bps fee user accepts
+ * @param {bigint} flatFee - Max flat fee user accepts
+ * @param {number} strategyType - Strategy type discriminator
+ * @param {Buffer} strategyData - Strategy-specific configuration
+ * @returns {import("@solana/web3.js").TransactionInstruction[]}
+ */
+function buildCreateStratAutoMinerInstructions(
+  signer,
+  managerAccount,
+  deployAuthority,
+  bpsFee,
+  flatFee = 0n,
+  strategyType = 0,
+  strategyData = Buffer.alloc(64)
+) {
+  const createManager = createManagerInstruction(signer, managerAccount);
+  const createStratDeployer = createStratDeployerInstruction(
+    signer, managerAccount, deployAuthority, bpsFee, flatFee,
+    1_000_000_000n, strategyType, strategyData
+  );
+  
+  return [createManager, createStratDeployer];
+}
+
+/**
+ * Builds instructions to create Strategy AutoMiner + initial deposit
+ * 
+ * @param {import("@solana/web3.js").PublicKey} signer - User's wallet
+ * @param {import("@solana/web3.js").PublicKey} managerAccount - New keypair for manager (must also sign!)
+ * @param {import("@solana/web3.js").PublicKey} deployAuthority - Platform's executor pubkey
+ * @param {bigint} bpsFee - Max bps fee user accepts
+ * @param {bigint} flatFee - Max flat fee user accepts
+ * @param {bigint} depositAmount - Initial SOL deposit in lamports
+ * @param {number} strategyType - Strategy type discriminator
+ * @param {Buffer} strategyData - Strategy-specific configuration
+ * @returns {import("@solana/web3.js").TransactionInstruction[]}
+ */
+function buildSetupStratAutoMinerInstructions(
+  signer,
+  managerAccount,
+  deployAuthority,
+  bpsFee,
+  flatFee = 0n,
+  depositAmount,
+  strategyType = 0,
+  strategyData = Buffer.alloc(64)
+) {
+  const createManager = createManagerInstruction(signer, managerAccount);
+  const createStratDeployer = createStratDeployerInstruction(
+    signer, managerAccount, deployAuthority, bpsFee, flatFee,
+    1_000_000_000n, strategyType, strategyData
+  );
+  const deposit = depositAutodeployBalanceInstruction(signer, managerAccount, 0n, depositAmount);
+  
+  return [createManager, createStratDeployer, deposit];
+}
+
+// =============================================================================
+// Strategy Executor/Crank Instructions
+// =============================================================================
+
+/**
+ * Builds a strategy autodeploy instruction (for executors)
+ * 
+ * @param {import("@solana/web3.js").PublicKey} executor - Executor's wallet (deploy_authority)
+ * @param {import("@solana/web3.js").PublicKey} manager - User's manager account
+ * @param {bigint} authId - Auth ID for the managed miner
+ * @param {bigint} roundId - Current round ID
+ * @param {bigint} amount - Amount to deploy
+ * @param {number} squaresMask - Bitmask of squares (bits 0-24)
+ * @param {number} extra - Extra parameter (used by DynamicEv)
+ * @returns {import("@solana/web3.js").TransactionInstruction[]}
+ */
+function buildStratAutodeployInstructions(
+  executor,
+  manager,
+  authId,
+  roundId,
+  amount,
+  squaresMask,
+  extra = 0
+) {
+  const autodeploy = mmStratAutodeployInstruction(
+    executor, manager, authId, roundId, amount, squaresMask, extra
+  );
+  return [autodeploy];
+}
+
+/**
+ * Builds a strategy full autodeploy instruction (for executors)
+ * Combined checkpoint + recycle + strategy deploy
+ * 
+ * @param {import("@solana/web3.js").PublicKey} executor - Executor's wallet (deploy_authority)
+ * @param {import("@solana/web3.js").PublicKey} manager - User's manager account
+ * @param {bigint} authId - Auth ID for the managed miner
+ * @param {bigint} roundId - Current round ID
+ * @param {bigint} checkpointRoundId - Round to checkpoint
+ * @param {bigint} amount - Amount to deploy
+ * @param {number} squaresMask - Bitmask of squares (bits 0-24)
+ * @param {number} extra - Extra parameter (used by DynamicEv)
+ * @returns {import("@solana/web3.js").TransactionInstruction[]}
+ */
+function buildStratFullAutodeployInstructions(
+  executor,
+  manager,
+  authId,
+  roundId,
+  checkpointRoundId,
+  amount,
+  squaresMask,
+  extra = 0
+) {
+  const fullAutodeploy = mmStratFullAutodeployInstruction(
+    executor, manager, authId, roundId, checkpointRoundId, amount, squaresMask, extra
+  );
+  return [fullAutodeploy];
+}
+
+/**
+ * Builds a recycle SOL instruction via strategy deployer (for executors)
+ * 
+ * @param {import("@solana/web3.js").PublicKey} executor - Executor's wallet (deploy_authority)
+ * @param {import("@solana/web3.js").PublicKey} manager - User's manager account
+ * @param {bigint} authId - Auth ID for the managed miner
+ * @returns {import("@solana/web3.js").TransactionInstruction[]}
+ */
+function buildRecycleStratSolInstructions(executor, manager, authId) {
+  const recycle = recycleStratSolInstruction(executor, manager, authId);
+  return [recycle];
+}
+
+// =============================================================================
+// Withdraw Tokens
+// =============================================================================
+
+/**
+ * Builds a withdraw tokens instruction
+ * Withdraws full token balance from managed_miner_auth ATA to signer's ATA
+ * 
+ * @param {import("@solana/web3.js").PublicKey} signer - User's wallet (manager authority)
+ * @param {import("@solana/web3.js").PublicKey} manager - Manager account
+ * @param {bigint} authId - Auth ID (default: 0)
+ * @param {import("@solana/web3.js").PublicKey} mint - Token mint (default: ORE mint)
+ * @returns {import("@solana/web3.js").TransactionInstruction[]}
+ */
+function buildWithdrawTokensInstructions(signer, manager, authId = 0n, mint = undefined) {
+  const withdraw = mint
+    ? withdrawTokensInstruction(signer, manager, authId, mint)
+    : withdrawTokensInstruction(signer, manager, authId);
+  return [withdraw];
+}
+
 module.exports = {
   // Setup
   buildCreateAutoMinerInstructions,
@@ -335,4 +503,16 @@ module.exports = {
   buildCheckpointAndAutodeployInstructions,
   buildRecycleSolInstructions,
   buildBatchedAutodeployInstructions,
+
+  // Strategy Setup
+  buildCreateStratAutoMinerInstructions,
+  buildSetupStratAutoMinerInstructions,
+
+  // Strategy Executor/Crank
+  buildStratAutodeployInstructions,
+  buildStratFullAutodeployInstructions,
+  buildRecycleStratSolInstructions,
+
+  // Withdraw Tokens
+  buildWithdrawTokensInstructions,
 };
