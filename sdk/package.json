@@ -56,11 +56,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kriptikz/evore.git"
+    "url": "git+https://github.com/Kriptikz/evore-program.git"
   },
-  "homepage": "https://github.com/kriptikz/evore/tree/master/sdk#readme",
+  "homepage": "https://github.com/Kriptikz/evore-program/tree/main/sdk#readme",
   "bugs": {
-    "url": "https://github.com/kriptikz/evore/issues"
+    "url": "https://github.com/Kriptikz/evore-program/issues"
   },
   "engines": {
     "node": ">=18.0.0"
