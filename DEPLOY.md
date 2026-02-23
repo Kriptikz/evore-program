@@ -156,15 +156,30 @@ solana-verify export-pda-tx \
   --compute-unit-price 0
 ```
 
-Copy the full base58 output — you'll paste it in Squads as a raw/serialized transaction.
+Save the full base58 output — you'll need it for Step 7b.
 
 ---
 
-## Step 6: Create proposals in Squads
+## Step 6: Create program upgrade proposal in Squads
 
-You need **two proposals** in Squads:
+### 6a. Transfer buffer authority to multisig
 
-### 6a. Program upgrade proposal
+Squads needs to own the buffer before you can create the upgrade proposal:
+
+```bash
+solana program set-buffer-authority "$BUFFER_ADDRESS" \
+  --new-buffer-authority "$MULTISIG_AUTHORITY" \
+  -um
+```
+
+Confirm output shows:
+
+```
+Account Type: Buffer
+Authority: Cy1uYhDqrpi6RBV6GcX28EhGfk31kM7ccpWCptjjzmGc
+```
+
+### 6b. Create the upgrade proposal
 
 1. Open [Squads](https://v4.squads.so/) and navigate to your multisig.
 2. Create a **Program Upgrade** transaction:
@@ -175,38 +190,25 @@ You need **two proposals** in Squads:
    ```bash
    echo "https://github.com/kriptikz/evore-program/commit/$(git rev-parse HEAD)"
    ```
-
-### 6b. Verification PDA proposal
-
-1. In Squads, use the **import raw/serialized transaction** option.
-2. Paste the base58 payload from Step 5.
-3. This writes verification metadata on-chain under the multisig uploader.
+4. Verify the buffer authority shows correctly in Squads and the upgrade is ready to go.
 
 ---
 
-## Step 7: Transfer buffer authority to multisig
+## Step 7: Create verification PDA proposal in Squads
 
-Run this **after** creating the upgrade proposal in Squads but **before** executing it:
-
-```bash
-solana program set-buffer-authority "$BUFFER_ADDRESS" \
-  --new-buffer-authority "$MULTISIG_AUTHORITY" \
-  -um
-```
-
-Confirm:
-
-```
-Account Type: Buffer
-Authority: Cy1uYhDqrpi6RBV6GcX28EhGfk31kM7ccpWCptjjzmGc
-```
+1. In Squads, go to the **Transaction Builder**.
+2. Give the transaction a name (e.g. "Verify PDA - evore <commit short hash>").
+3. Click **Add Instruction** → **Import from Base58**.
+4. Paste the base58 payload from Step 5.
+5. Click **Next** and review the transaction details.
+6. Create the proposal.
 
 ---
 
 ## Step 8: Approve and execute in Squads
 
 1. Collect required multisig approvals for both proposals.
-2. Execute the **program upgrade** proposal.
+2. Execute the **program upgrade** proposal first.
 3. Execute the **verification PDA** proposal.
 
 > **Do not proceed to Step 9 until both transactions are confirmed on-chain.**
