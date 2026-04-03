@@ -197,7 +197,9 @@ pub fn process_mm_full_autodeploy(
     if claimable_sol > 0 {
         let claim_accounts = vec![
             managed_miner_auth_account_info.clone(),
+            board_account_info.clone(),
             ore_miner_account_info.clone(),
+            system_program_info.clone(),
             ore_program.clone(),
         ];
 

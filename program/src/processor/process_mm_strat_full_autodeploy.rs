@@ -186,8 +186,10 @@ pub fn process_mm_strat_full_autodeploy(
             &ore_api::claim_sol(*managed_miner_auth_account_info.key),
             &[
                 managed_miner_auth_account_info.clone(),
+                board_account_info.clone(),
                 ore_miner_account_info.clone(),
                 system_program_info.clone(),
+                ore_program.clone(),
             ],
             &[managed_miner_auth_seeds],
         )?;

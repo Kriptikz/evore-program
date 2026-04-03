@@ -23,6 +23,8 @@ async fn setup_recycle_test(rewards_sol: u64) -> (
 
     let (mma_pda, _mma_bump) = managed_miner_auth_pda(manager.pubkey(), auth_id);
 
+    add_board_account(&mut program_test, TEST_ROUND_ID, 1, 50_000, 0);
+
     // Add ore miner with claimable SOL
     add_ore_miner_account(
         &mut program_test,

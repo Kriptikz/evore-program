@@ -1,5 +1,5 @@
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey,
+    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program,
 };
 use steel::*;
 
@@ -27,7 +27,9 @@ pub fn process_recycle_sol(
         deployer_account_info,             // 2: deployer PDA
         managed_miner_auth_account_info,   // 3: managed_miner_auth PDA
         ore_miner_account_info,            // 4: ore_miner
-        ore_program,                       // 5: ore_program
+        board_account_info,                // 5: board
+        system_program_info,               // 6: system
+        ore_program,                       // 7: ore_program
     ] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
@@ -39,6 +41,14 @@ pub fn process_recycle_sol(
 
     if *ore_program.key != ore_api::id() {
         return Err(ProgramError::IncorrectProgramId);
+    }
+
+    if *system_program_info.key != system_program::id() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    if *board_account_info.key != ore_api::board_pda().0 {
+        return Err(EvoreError::InvalidPDA.into());
     }
 
     // Verify manager is initialized
@@ -104,7 +114,9 @@ pub fn process_recycle_sol(
     // Call ORE claim_sol CPI - SOL stays in managed_miner_auth
     let claim_accounts = vec![
         managed_miner_auth_account_info.clone(),
+        board_account_info.clone(),
         ore_miner_account_info.clone(),
+        system_program_info.clone(),
         ore_program.clone(),
     ];
 

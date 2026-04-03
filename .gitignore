@@ -4,3 +4,5 @@ crank/crank.db
 js-crank/.env
 /js-crank/node_modules
 /target
+scripts/node_modules/
+program/tests/buffers/*.backup-*

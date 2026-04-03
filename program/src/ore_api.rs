@@ -701,13 +701,16 @@ pub struct ClaimSOL {}
 instruction!(OreInstruction, ClaimSOL);
 
 pub fn claim_sol(signer: Pubkey) -> Instruction {
+    let board_address = board_pda().0;
     let miner_address = miner_pda(signer).0;
     Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
             AccountMeta::new(signer, true),
+            AccountMeta::new(board_address, false),
             AccountMeta::new(miner_address, false),
             AccountMeta::new_readonly(system_program::ID, false),
+            AccountMeta::new_readonly(PROGRAM_ID, false),
         ],
         data: ClaimSOL {}.to_bytes(),
     }
@@ -718,6 +721,7 @@ pub fn claim_sol(signer: Pubkey) -> Instruction {
 pub struct ClaimORE {}
 instruction!(OreInstruction, ClaimORE);
 pub fn claim_ore(signer: Pubkey) -> Instruction {
+    let board_address = board_pda().0;
     let miner_address = miner_pda(signer).0;
     let treasury_address = treasury_pda().0;
     let treasury_tokens_address = get_associated_token_address(&treasury_address, &MINT_ADDRESS);
@@ -727,6 +731,7 @@ pub fn claim_ore(signer: Pubkey) -> Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
             AccountMeta::new(signer, true),
+            AccountMeta::new(board_address, false),
             AccountMeta::new(miner_address, false),
             AccountMeta::new(MINT_ADDRESS, false),
             AccountMeta::new(recipient_address, false),
@@ -735,6 +740,7 @@ pub fn claim_ore(signer: Pubkey) -> Instruction {
             AccountMeta::new_readonly(system_program::ID, false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(spl_associated_token_account::ID, false),
+            AccountMeta::new_readonly(PROGRAM_ID, false),
         ],
         data: ClaimORE {}.to_bytes(),
     }

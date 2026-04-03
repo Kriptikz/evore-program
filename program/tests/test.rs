@@ -2668,6 +2668,8 @@ mod claim_sol {
                 rent_epoch: 0,
             },
         );
+
+        add_board_account(&mut program_test, TEST_ROUND_ID, 1, TEST_ROUND_ID + 1000, 0);
         
         let context = program_test.start_with_context().await;
         
@@ -2764,6 +2766,7 @@ mod claim_sol {
         add_manager_account(&mut program_test, manager_address, miner.pubkey());
         // Miner with ZERO SOL rewards
         add_ore_miner_account(&mut program_test, managed_miner_auth.0, [0u64; 25], 0, 0, TEST_ROUND_ID - 1, TEST_ROUND_ID - 1);
+        add_board_account(&mut program_test, TEST_ROUND_ID, 1, TEST_ROUND_ID + 1000, 0);
         
         let context = program_test.start_with_context().await;
         
@@ -2800,6 +2803,7 @@ mod claim_sol {
         add_manager_account(&mut program_test, manager_address, miner.pubkey());
         // Miner with SOL rewards
         add_ore_miner_account(&mut program_test, managed_miner_auth.0, [0u64; 25], sol_rewards, 0, TEST_ROUND_ID - 1, TEST_ROUND_ID - 1);
+        add_board_account(&mut program_test, TEST_ROUND_ID, 1, TEST_ROUND_ID + 1000, 0);
         
         let context = program_test.start_with_context().await;
         
@@ -2983,6 +2987,7 @@ mod claim_ore {
         add_treasury_account(&mut program_test);
         add_mint_account(&mut program_test);
         add_treasury_ata_account(&mut program_test);
+        add_board_account(&mut program_test, TEST_ROUND_ID, 1, TEST_ROUND_ID + 1000, 0);
         
         let context = program_test.start_with_context().await;
         
@@ -3023,6 +3028,7 @@ mod claim_ore {
         add_treasury_account(&mut program_test);
         add_mint_account(&mut program_test);
         add_treasury_ata_account(&mut program_test);
+        add_board_account(&mut program_test, TEST_ROUND_ID, 1, TEST_ROUND_ID + 1000, 0);
         
         let context = program_test.start_with_context().await;
         

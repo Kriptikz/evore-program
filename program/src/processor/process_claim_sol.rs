@@ -1,5 +1,5 @@
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program
+    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey,
 };
 use steel::*;
 
@@ -18,6 +18,7 @@ pub fn process_claim_sol(
             signer,
             manager_account_info,
             managed_miner_auth_account_info,
+            board_account_info,
             ore_miner_account_info,
             system_program,
             ore_program,
@@ -45,7 +46,11 @@ pub fn process_claim_sol(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    if *system_program.key != system_program::id() {
+    if *board_account_info.key != ore_api::board_pda().0 {
+        return Err(EvoreError::InvalidPDA.into());
+    }
+
+    if *system_program.key != solana_program::system_program::id() {
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -71,13 +76,13 @@ pub fn process_claim_sol(
         return Err(EvoreError::InvalidPDA.into());
     }
 
-    let claim_sol_accounts = 
-        vec![
-            managed_miner_auth_account_info.clone(),
-            ore_miner_account_info.clone(),
-            system_program.clone(),
-            ore_program.clone(),
-        ];
+    let claim_sol_accounts = vec![
+        managed_miner_auth_account_info.clone(),
+        board_account_info.clone(),
+        ore_miner_account_info.clone(),
+        system_program.clone(),
+        ore_program.clone(),
+    ];
     let managed_miner_auth_key = claim_sol_accounts[0].key.clone();
 
     solana_program::program::invoke_signed(

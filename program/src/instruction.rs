@@ -418,6 +418,7 @@ instruction!(Instructions, MMClaimSOL);
 pub fn mm_claim_sol(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instruction {
     let (managed_miner_auth_address, bump) = managed_miner_auth_pda(manager, auth_id);
     let ore_miner_address = miner_pda(managed_miner_auth_address);
+    let board_address = board_pda().0;
 
     Instruction {
         program_id: crate::id(),
@@ -425,6 +426,7 @@ pub fn mm_claim_sol(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instructio
             AccountMeta::new(signer, true),
             AccountMeta::new(manager, false),
             AccountMeta::new(managed_miner_auth_address, false),
+            AccountMeta::new(board_address, false),
             AccountMeta::new(ore_miner_address.0, false),
             AccountMeta::new_readonly(system_program::id(), false),
             AccountMeta::new_readonly(ore_api::id(), false),
@@ -448,6 +450,7 @@ instruction!(Instructions, MMClaimORE);
 pub fn mm_claim_ore(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instruction {
     let (managed_miner_auth_address, bump) = managed_miner_auth_pda(manager, auth_id);
     let ore_miner_address = miner_pda(managed_miner_auth_address);
+    let board_address = board_pda().0;
     let treasury_address = treasury_pda().0;
     let treasury_tokens_address = get_associated_token_address(&treasury_address, &ore_api::MINT_ADDRESS);
     let recipient_address = get_associated_token_address(&managed_miner_auth_address, &ore_api::MINT_ADDRESS);
@@ -459,6 +462,7 @@ pub fn mm_claim_ore(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instructio
             AccountMeta::new(signer, true),
             AccountMeta::new(manager, false),
             AccountMeta::new(managed_miner_auth_address, false),
+            AccountMeta::new(board_address, false),
             AccountMeta::new(ore_miner_address.0, false),
             AccountMeta::new(ore_api::MINT_ADDRESS, false),
             AccountMeta::new(recipient_address, false),
@@ -726,6 +730,7 @@ pub fn recycle_sol(
     let (managed_miner_auth_address, _) = managed_miner_auth_pda(manager, auth_id);
     let ore_miner_address = miner_pda(managed_miner_auth_address);
     let (deployer_address, _) = deployer_pda(manager);
+    let board_address = board_pda().0;
 
     Instruction {
         program_id: crate::id(),
@@ -735,7 +740,9 @@ pub fn recycle_sol(
             AccountMeta::new(deployer_address, false),           // 2: deployer PDA
             AccountMeta::new(managed_miner_auth_address, false), // 3: managed_miner_auth PDA
             AccountMeta::new(ore_miner_address.0, false),        // 4: ore_miner
-            AccountMeta::new_readonly(ore_api::id(), false),     // 5: ore_program
+            AccountMeta::new(board_address, false),              // 5: board
+            AccountMeta::new_readonly(system_program::id(), false), // 6: system
+            AccountMeta::new_readonly(ore_api::id(), false),     // 7: ore_program
         ],
         data: RecycleSol {
             auth_id: auth_id.to_le_bytes(),
@@ -1187,6 +1194,7 @@ pub fn recycle_strat_sol(
     let (strat_deployer_address, _) = strategy_deployer_pda(manager);
     let (managed_miner_auth_address, _) = managed_miner_auth_pda(manager, auth_id);
     let ore_miner_address = miner_pda(managed_miner_auth_address);
+    let board_address = board_pda().0;
 
     Instruction {
         program_id: crate::id(),
@@ -1196,6 +1204,7 @@ pub fn recycle_strat_sol(
             AccountMeta::new(strat_deployer_address, false),
             AccountMeta::new(managed_miner_auth_address, false),
             AccountMeta::new(ore_miner_address.0, false),
+            AccountMeta::new(board_address, false),
             AccountMeta::new_readonly(ore_api::id(), false),
             AccountMeta::new_readonly(system_program::id(), false),
         ],

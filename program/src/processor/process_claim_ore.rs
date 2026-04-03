@@ -1,5 +1,5 @@
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program
+    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey,
 };
 use steel::*;
 
@@ -18,6 +18,7 @@ pub fn process_claim_ore(
             signer,
             manager_account_info,
             managed_miner_auth_account_info,
+            board_account_info,
             ore_miner_account_info,
             mint_account_info,
             recipient_account_info,
@@ -60,7 +61,11 @@ pub fn process_claim_ore(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    if *system_program.key != system_program::id() {
+    if *board_account_info.key != ore_api::board_pda().0 {
+        return Err(EvoreError::InvalidPDA.into());
+    }
+
+    if *system_program.key != solana_program::system_program::id() {
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -94,19 +99,19 @@ pub fn process_claim_ore(
         return Err(EvoreError::InvalidPDA.into());
     }
 
-    let claim_ore_accounts = 
-        vec![
-            managed_miner_auth_account_info.clone(),
-            ore_miner_account_info.clone(),
-            mint_account_info.clone(),
-            recipient_account_info.clone(),
-            treasury_account_info.clone(),
-            treasury_tokens_account_info.clone(),
-            system_program.clone(),
-            spl_program.clone(),
-            spl_ata_program.clone(),
-            ore_program.clone(),
-        ];
+    let claim_ore_accounts = vec![
+        managed_miner_auth_account_info.clone(),
+        board_account_info.clone(),
+        ore_miner_account_info.clone(),
+        mint_account_info.clone(),
+        recipient_account_info.clone(),
+        treasury_account_info.clone(),
+        treasury_tokens_account_info.clone(),
+        system_program.clone(),
+        spl_program.clone(),
+        spl_ata_program.clone(),
+        ore_program.clone(),
+    ];
     let managed_miner_auth_key = claim_ore_accounts[0].key.clone();
 
     if recipient_account_info.data_is_empty() {

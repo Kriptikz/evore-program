@@ -1,5 +1,5 @@
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey,
+    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program,
 };
 use steel::*;
 
@@ -24,6 +24,7 @@ pub fn process_recycle_strat_sol(
         strat_deployer_account_info,
         managed_miner_auth_account_info,
         ore_miner_account_info,
+        board_account_info,
         ore_program,
         system_program_info,
     ] = accounts else {
@@ -36,6 +37,14 @@ pub fn process_recycle_strat_sol(
 
     if *ore_program.key != ore_api::id() {
         return Err(ProgramError::IncorrectProgramId);
+    }
+
+    if *system_program_info.key != system_program::id() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    if *board_account_info.key != ore_api::board_pda().0 {
+        return Err(EvoreError::InvalidPDA.into());
     }
 
     if manager_account_info.data_is_empty() {
@@ -89,9 +98,10 @@ pub fn process_recycle_strat_sol(
 
     let claim_accounts = vec![
         managed_miner_auth_account_info.clone(),
+        board_account_info.clone(),
         ore_miner_account_info.clone(),
-        ore_program.clone(),
         system_program_info.clone(),
+        ore_program.clone(),
     ];
 
     solana_program::program::invoke_signed(
