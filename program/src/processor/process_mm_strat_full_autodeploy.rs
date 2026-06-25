@@ -12,7 +12,7 @@ use crate::{
     entropy_api,
     error::EvoreError,
     instruction::MMStratFullAutodeploy,
-    ore_api::{self, Board, Miner, Round},
+    ore_api::{self},
     processor::strategy_dispatch::{dispatch_strategy, StrategyResult},
     state::{Manager, StrategyDeployer},
 };
@@ -27,24 +27,9 @@ pub fn process_mm_strat_full_autodeploy(
     let squares_mask = u32::from_le_bytes(args.squares_mask);
     let extra = u32::from_le_bytes(args.extra);
 
-    let [
-        signer,
-        manager_account_info,
-        strat_deployer_account_info,
-        managed_miner_auth_account_info,
-        ore_miner_account_info,
-        fee_collector_account_info,
-        automation_account_info,
-        config_account_info,
-        board_account_info,
-        round_account_info,
-        checkpoint_round_account_info,
-        treasury_account_info,
-        entropy_var_account_info,
-        ore_program,
-        entropy_program,
-        system_program_info,
-    ] = accounts else {
+    let [signer, manager_account_info, strat_deployer_account_info, managed_miner_auth_account_info, ore_miner_account_info, fee_collector_account_info, automation_account_info, config_account_info, board_account_info, round_account_info, checkpoint_round_account_info, treasury_account_info, entropy_var_account_info, ore_program, entropy_program, system_program_info] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -109,7 +94,11 @@ pub fn process_mm_strat_full_autodeploy(
     }
 
     let (managed_miner_auth_pda, managed_miner_auth_bump) = Pubkey::find_program_address(
-        &[MANAGED_MINER_AUTH, manager_account_info.key.as_ref(), &auth_id.to_le_bytes()],
+        &[
+            MANAGED_MINER_AUTH,
+            manager_account_info.key.as_ref(),
+            &auth_id.to_le_bytes(),
+        ],
         &crate::id(),
     );
 
@@ -118,13 +107,13 @@ pub fn process_mm_strat_full_autodeploy(
     }
 
     let clock = Clock::get()?;
-    let board = board_account_info.as_account::<Board>(&ore_api::id())?;
+    let board = ore_api::load_board(board_account_info)?;
 
-    if clock.slot >= board.end_slot {
+    if clock.slot >= board.end_slot() {
         return Err(EvoreError::EndSlotReached.into());
     }
 
-    let round = round_account_info.as_account::<Round>(&ore_api::id())?;
+    let round = ore_api::load_round(round_account_info)?;
 
     let auth_id_bytes = auth_id.to_le_bytes();
     let managed_miner_auth_seeds: &[&[u8]] = &[
@@ -140,13 +129,16 @@ pub fn process_mm_strat_full_autodeploy(
     let checkpoint_round_id = if ore_miner_account_info.data_is_empty() {
         return Err(ProgramError::InvalidAccountData);
     } else {
-        let ore_miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-        ore_miner.round_id
+        let ore_miner = ore_api::load_miner(ore_miner_account_info)?;
+        ore_miner.round_id()
     };
 
     let (needs_checkpoint, is_already_deployed) = if !ore_miner_account_info.data_is_empty() {
-        let miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-        (miner.checkpoint_id < checkpoint_round_id, miner.round_id == board.round_id)
+        let miner = ore_api::load_miner(ore_miner_account_info)?;
+        (
+            miner.checkpoint_id() < checkpoint_round_id,
+            miner.round_id() == board.round_id(),
+        )
     } else {
         (false, false)
     };
@@ -175,8 +167,8 @@ pub fn process_mm_strat_full_autodeploy(
     // STEP 2: Recycle SOL if needed
     // ======================================================================
     let claimable_sol = if !ore_miner_account_info.data_is_empty() {
-        let miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-        miner.rewards_sol
+        let miner = ore_api::load_miner(ore_miner_account_info)?;
+        miner.rewards_sol()
     } else {
         0
     };
@@ -198,7 +190,11 @@ pub fn process_mm_strat_full_autodeploy(
     // ======================================================================
     // STEP 3: Strategy dispatch
     // ======================================================================
-    let StrategyResult { mut batches, total_to_deploy, needs_automation } = dispatch_strategy(
+    let StrategyResult {
+        mut batches,
+        total_to_deploy,
+        needs_automation,
+    } = dispatch_strategy(
         strategy_type,
         &strategy_data,
         amount,
@@ -214,9 +210,9 @@ pub fn process_mm_strat_full_autodeploy(
     // ======================================================================
     if max_per_round > 0 {
         let already_deployed = if !ore_miner_account_info.data_is_empty() {
-            let miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-            if miner.round_id == board.round_id {
-                miner.deployed.iter().sum::<u64>()
+            let miner = ore_api::load_miner(ore_miner_account_info)?;
+            if miner.round_id() == board.round_id() {
+                miner.deployed().iter().sum::<u64>()
             } else {
                 0
             }
@@ -234,7 +230,9 @@ pub fn process_mm_strat_full_autodeploy(
     // STEP 5: Fee calculation + balance check
     // ======================================================================
     let bps_fee_amount = if bps_fee > 0 {
-        total_to_deploy.saturating_mul(bps_fee).saturating_div(10_000)
+        total_to_deploy
+            .saturating_mul(bps_fee)
+            .saturating_div(10_000)
     } else {
         0
     };
@@ -244,13 +242,13 @@ pub fn process_mm_strat_full_autodeploy(
 
     const AUTH_PDA_RENT: u64 = 890_880;
     let miner_rent = if ore_miner_account_info.data_is_empty() {
-        let size = 8 + std::mem::size_of::<Miner>();
+        let size = ore_api::miner_rent_size();
         solana_program::rent::Rent::default().minimum_balance(size)
     } else {
         0
     };
 
-    let automation_size = 8 + std::mem::size_of::<ore_api::Automation>();
+    let automation_size = ore_api::automation_rent_size();
     let automation_rent = if needs_automation {
         solana_program::rent::Rent::default().minimum_balance(automation_size)
     } else {
@@ -327,7 +325,8 @@ pub fn process_mm_strat_full_autodeploy(
         batches.sort_by_key(|b| b.amount);
         let max_batch_amount = batches.last().map(|b| b.amount).unwrap_or(0);
 
-        let deposit = managed_miner_auth_account_info.lamports()
+        let deposit = managed_miner_auth_account_info
+            .lamports()
             .saturating_sub(AUTH_PDA_RENT)
             .saturating_sub(automation_rent)
             .saturating_sub(miner_rent);
@@ -338,7 +337,10 @@ pub fn process_mm_strat_full_autodeploy(
                 max_batch_amount,
                 deposit,
                 *managed_miner_auth_account_info.key,
-                0, 0, 2, false,
+                0,
+                0,
+                2,
+                false,
             ),
             &[
                 managed_miner_auth_account_info.clone(),
@@ -359,7 +361,7 @@ pub fn process_mm_strat_full_autodeploy(
                     *managed_miner_auth_account_info.key,
                     *managed_miner_auth_account_info.key,
                     batch.amount,
-                    round.id,
+                    round.id(),
                     batch.squares,
                 ),
                 &deploy_accounts,
@@ -406,7 +408,7 @@ pub fn process_mm_strat_full_autodeploy(
                 *managed_miner_auth_account_info.key,
                 *managed_miner_auth_account_info.key,
                 batch.amount,
-                round.id,
+                round.id(),
                 batch.squares,
             ),
             &deploy_accounts,

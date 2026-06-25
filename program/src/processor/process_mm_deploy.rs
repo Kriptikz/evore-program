@@ -1,11 +1,19 @@
 use solana_program::{
-    account_info::AccountInfo, instruction::{AccountMeta, Instruction},
-    program_error::ProgramError, pubkey::Pubkey, system_program
+    account_info::AccountInfo,
+    instruction::{AccountMeta, Instruction},
+    program_error::ProgramError,
+    pubkey::Pubkey,
+    system_program,
 };
 use steel::*;
 
 use crate::{
-    consts::{DEPLOY_FEE, FEE_COLLECTOR}, entropy_api, error::EvoreError, instruction::{DeployStrategy, MMDeploy}, ore_api::{self, Board, Round}, state::Manager
+    consts::{DEPLOY_FEE, FEE_COLLECTOR},
+    entropy_api,
+    error::EvoreError,
+    instruction::{DeployStrategy, MMDeploy},
+    ore_api::{self, RoundAccount},
+    state::Manager,
 };
 
 /// A batch of deployments to execute in a single CPI call
@@ -20,7 +28,7 @@ impl DeploymentBatch {
     pub fn new(amount: u64, squares: [bool; 25]) -> Self {
         Self { amount, squares }
     }
-    
+
     /// Create a batch for a single square
     pub fn single(amount: u64, square_idx: usize) -> Self {
         let mut squares = [false; 25];
@@ -29,10 +37,13 @@ impl DeploymentBatch {
         }
         Self { amount, squares }
     }
-    
+
     /// Create a batch for all 25 squares
     pub fn all_squares(amount: u64) -> Self {
-        Self { amount, squares: [true; 25] }
+        Self {
+            amount,
+            squares: [true; 25],
+        }
     }
 }
 
@@ -42,40 +53,28 @@ pub fn process_mm_deploy(
 ) -> Result<(), ProgramError> {
     let args = MMDeploy::try_from_bytes(instruction_data)?;
     let auth_id = u64::from_le_bytes(args.auth_id);
-    
+
     // Parse strategy enum with its data
-    let strategy = args.get_strategy()
+    let strategy = args
+        .get_strategy()
         .map_err(|_| ProgramError::InvalidInstructionData)?;
 
-    let [
-            signer,
-            manager_account_info,
-            managed_miner_auth_account_info,
-            ore_miner_account_info,
-            fee_collector_account_info,
-            automation_account_info,
-            config_account_info,
-            board_account_info,
-            round_account_info,
-            entropy_var_account_info,
-            ore_program,
-            entropy_program,
-            system_program
-    ] = accounts else {
+    let [signer, manager_account_info, managed_miner_auth_account_info, ore_miner_account_info, fee_collector_account_info, automation_account_info, config_account_info, board_account_info, round_account_info, entropy_var_account_info, ore_program, entropy_program, system_program] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
     let clock = Clock::get()?;
-    let board = board_account_info
-        .as_account::<Board>(&ore_api::id())?;
+    let board = ore_api::load_board(board_account_info)?;
 
-    if clock.slot >= board.end_slot {
+    if clock.slot >= board.end_slot() {
         return Err(EvoreError::EndSlotReached.into());
     }
 
     // EV strategy has slots_left check
     if let DeployStrategy::EV { slots_left, .. } = strategy {
-        let current_slots_left = board.end_slot - clock.slot;
+        let current_slots_left = board.end_slot() - clock.slot;
         if current_slots_left > slots_left {
             return Err(EvoreError::TooManySlotsLeft.into());
         }
@@ -109,15 +108,13 @@ pub fn process_mm_deploy(
         return Err(EvoreError::InvalidFeeCollector.into());
     }
 
-    let manager = manager_account_info
-        .as_account::<Manager>(&crate::id())?;
+    let manager = manager_account_info.as_account::<Manager>(&crate::id())?;
 
     if manager.authority != *signer.key {
         return Err(EvoreError::NotAuthorized.into());
     }
 
-    let round = round_account_info
-        .as_account::<Round>(&ore_api::id())?;
+    let round = ore_api::load_round(round_account_info)?;
 
     // Use create_program_address with bump from instruction data for deterministic CU usage
     let managed_miner_auth_pda = Pubkey::create_program_address(
@@ -128,7 +125,8 @@ pub fn process_mm_deploy(
             &[args.bump],
         ],
         &crate::id(),
-    ).map_err(|_| EvoreError::InvalidPDA)?;
+    )
+    .map_err(|_| EvoreError::InvalidPDA)?;
 
     if managed_miner_auth_pda != *managed_miner_auth_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -136,8 +134,8 @@ pub fn process_mm_deploy(
 
     // Check if already deployed this round (only if miner exists)
     let is_already_deployed = if !ore_miner_account_info.data_is_empty() {
-        let miner = ore_miner_account_info.as_account::<ore_api::Miner>(&ore_api::id())?;
-        miner.round_id == board.round_id
+        let miner = ore_api::load_miner(ore_miner_account_info)?;
+        miner.round_id() == board.round_id()
     } else {
         false // First ever deploy, miner doesn't exist yet
     };
@@ -145,88 +143,87 @@ pub fn process_mm_deploy(
     // This applies to all strategies, not just EV
     let allow_multi_deploy = args.get_allow_multi_deploy();
     if !allow_multi_deploy && is_already_deployed {
-          return Err(EvoreError::AlreadyDeployedThisRound.into());
+        return Err(EvoreError::AlreadyDeployedThisRound.into());
     }
 
     // Calculate deployments based on strategy - returns batched deployments
     let (mut batches, total_deployed) = match strategy {
-        DeployStrategy::EV { bankroll, max_per_square, min_bet, ore_value, .. } => {
-            calculate_ev_deployments(round, bankroll, min_bet, max_per_square, ore_value)
-        },
-        DeployStrategy::Percentage { bankroll, percentage, squares_count } => {
-            calculate_percentage_deployments(round, bankroll, percentage, squares_count)
-        },
-        DeployStrategy::Manual { amounts } => {
-            calculate_manual_deployments(amounts)
-        },
-        DeployStrategy::Split { amount } => {
-            calculate_split_deployments(round, amount)
-        },
+        DeployStrategy::EV {
+            bankroll,
+            max_per_square,
+            min_bet,
+            ore_value,
+            ..
+        } => calculate_ev_deployments(&round, bankroll, min_bet, max_per_square, ore_value),
+        DeployStrategy::Percentage {
+            bankroll,
+            percentage,
+            squares_count,
+        } => calculate_percentage_deployments(&round, bankroll, percentage, squares_count),
+        DeployStrategy::Manual { amounts } => calculate_manual_deployments(amounts),
+        DeployStrategy::Split { amount } => calculate_split_deployments(&round, amount),
     };
 
     if total_deployed == 0 {
         return Err(EvoreError::NoDeployments.into());
     }
 
-    let deploy_accounts = 
-        vec![
-            managed_miner_auth_account_info.clone(),
-            managed_miner_auth_account_info.clone(),
-            automation_account_info.clone(),
-            board_account_info.clone(),
-            config_account_info.clone(),
-            ore_miner_account_info.clone(),
-            round_account_info.clone(),
-            system_program.clone(),
-            ore_program.clone(),
-            entropy_var_account_info.clone(),
-            entropy_program.clone(),
-            ore_program.clone(),
-        ];
+    let deploy_accounts = vec![
+        managed_miner_auth_account_info.clone(),
+        managed_miner_auth_account_info.clone(),
+        automation_account_info.clone(),
+        board_account_info.clone(),
+        config_account_info.clone(),
+        ore_miner_account_info.clone(),
+        round_account_info.clone(),
+        system_program.clone(),
+        ore_program.clone(),
+        entropy_var_account_info.clone(),
+        entropy_program.clone(),
+        ore_program.clone(),
+    ];
 
     // transfer fee to fee_collector for deployments 1_000 lamports flat fee
     // only transfer on first deploymnet of a round
     if !is_already_deployed {
-      let fee_amount = DEPLOY_FEE;
-      let transfer_fee_accounts = 
-          vec![
-              signer.clone(),
-              fee_collector_account_info.clone(),
-              system_program.clone(),
-          ];
-      solana_program::program::invoke(
-          &solana_program::system_instruction::transfer(
-              signer.key,
-              fee_collector_account_info.key,
-              fee_amount,
-          ),
-          &transfer_fee_accounts,
-      )?;
+        let fee_amount = DEPLOY_FEE;
+        let transfer_fee_accounts = vec![
+            signer.clone(),
+            fee_collector_account_info.clone(),
+            system_program.clone(),
+        ];
+        solana_program::program::invoke(
+            &solana_program::system_instruction::transfer(
+                signer.key,
+                fee_collector_account_info.key,
+                fee_amount,
+            ),
+            &transfer_fee_accounts,
+        )?;
     }
 
     // Transfer funds to managed_miner_auth PDA for CPI deployments
     // The PDA must always retain: rent_exempt_minimum + CHECKPOINT_FEE
     // Plus we need enough for: total_deployed + miner_rent (if first deploy)
-    let transfer_accounts = 
-        vec![
-            signer.clone(),
-            managed_miner_auth_account_info.clone(),
-            system_program.clone(),
-        ];
-    
+    let transfer_accounts = vec![
+        signer.clone(),
+        managed_miner_auth_account_info.clone(),
+        system_program.clone(),
+    ];
+
     // Minimum rent for 0-byte account (PDA has no data)
     const AUTH_PDA_RENT: u64 = 890_880;
-    
+
     // Miner account rent: ORE creates miner account on first deploy
     let miner_rent = if ore_miner_account_info.data_is_empty() {
-        let size = 8 + std::mem::size_of::<ore_api::Miner>();
+        let size = ore_api::miner_rent_size();
         solana_program::rent::Rent::default().minimum_balance(size)
     } else {
         0
     };
 
     // Automation account rent (temporary - returned when closed or auto-closed)
-    let automation_size = 8 + std::mem::size_of::<ore_api::Automation>();
+    let automation_size = ore_api::automation_rent_size();
     let automation_rent = solana_program::rent::Rent::default().minimum_balance(automation_size);
 
     // Required balance in auth_pda:
@@ -240,10 +237,10 @@ pub fn process_mm_deploy(
         .saturating_add(total_deployed)
         .saturating_add(miner_rent)
         .saturating_add(automation_rent);
-    
+
     let current_balance = managed_miner_auth_account_info.lamports();
     let transfer_amount = required_balance.saturating_sub(current_balance);
-    
+
     if transfer_amount > 0 {
         solana_program::program::invoke(
             &solana_program::system_instruction::transfer(
@@ -268,7 +265,8 @@ pub fn process_mm_deploy(
 
     // Deposit all available SOL from auth_pda except its rent-exempt minimum.
     // automation_rent is deducted separately by ORE's create_account before deposit.
-    let deposit = managed_miner_auth_account_info.lamports()
+    let deposit = managed_miner_auth_account_info
+        .lamports()
         .saturating_sub(AUTH_PDA_RENT)
         .saturating_sub(automation_rent);
 
@@ -285,22 +283,22 @@ pub fn process_mm_deploy(
 
     // Open ephemeral automation with Discretionary strategy
     let automate_open_accounts = vec![
-        managed_miner_auth_account_info.clone(),  // signer (authority)
-        automation_account_info.clone(),           // automation PDA
-        managed_miner_auth_account_info.clone(),   // executor = auth_pda
-        ore_miner_account_info.clone(),            // miner
-        system_program.clone(),                    // system_program
+        managed_miner_auth_account_info.clone(), // signer (authority)
+        automation_account_info.clone(),         // automation PDA
+        managed_miner_auth_account_info.clone(), // executor = auth_pda
+        ore_miner_account_info.clone(),          // miner
+        system_program.clone(),                  // system_program
     ];
     solana_program::program::invoke_signed(
         &ore_api::automate(
             managed_miner_auth_key,
-            max_batch_amount,        // amount: Discretionary cap (max single batch)
-            deposit,                 // deposit: all available SOL from auth_pda
-            managed_miner_auth_key,  // executor = ourselves
-            0,                       // fee
-            0,                       // mask (not used for Discretionary)
-            2,                       // strategy = Discretionary
-            false,                   // reload
+            max_batch_amount,       // amount: Discretionary cap (max single batch)
+            deposit,                // deposit: all available SOL from auth_pda
+            managed_miner_auth_key, // executor = ourselves
+            0,                      // fee
+            0,                      // mask (not used for Discretionary)
+            2,                      // strategy = Discretionary
+            false,                  // reload
         ),
         &automate_open_accounts,
         &[managed_miner_auth_seeds],
@@ -319,7 +317,7 @@ pub fn process_mm_deploy(
                 managed_miner_auth_key,
                 managed_miner_auth_key,
                 batch.amount,
-                round.id,
+                round.id(),
                 batch.squares,
             ),
             &deploy_accounts,
@@ -335,7 +333,7 @@ pub fn process_mm_deploy(
         let automate_close_accounts = vec![
             managed_miner_auth_account_info.clone(),
             automation_account_info.clone(),
-            system_program.clone(),              // executor = Pubkey::default() = system_program
+            system_program.clone(), // executor = Pubkey::default() = system_program
             ore_miner_account_info.clone(),
             system_program.clone(),
         ];
@@ -379,110 +377,114 @@ pub fn process_mm_deploy(
 /// Formula to own P% of square: amount = P * T / (10000 - P)
 /// Max affordable percentage: P_max = 10000 * B / (Total + B)
 pub(crate) fn calculate_percentage_deployments(
-    round: &Round,
+    round: &RoundAccount,
     bankroll: u64,
-    percentage: u64,      // In basis points (1000 = 10%)
-    squares_count: u64,   // Number of squares to deploy to (1-25)
+    percentage: u64,    // In basis points (1000 = 10%)
+    squares_count: u64, // Number of squares to deploy to (1-25)
 ) -> (Vec<DeploymentBatch>, u64) {
     // Validate inputs
-    if percentage == 0 || percentage >= 10000 || squares_count == 0 || squares_count > 25 || bankroll == 0 {
+    if percentage == 0
+        || percentage >= 10000
+        || squares_count == 0
+        || squares_count > 25
+        || bankroll == 0
+    {
         return (Vec::new(), 0);
     }
-    
+
     let count = (squares_count as usize).min(25);
-    
+    let deployed = round.deployed();
+
     // Step 1: Calculate total deployed across target squares and identify deployable squares
     let mut total_on_target_squares: u128 = 0;
     let mut deployable_indices: Vec<usize> = Vec::new();
-    
+
     for i in 0..count {
-        if round.deployed[i] > 0 {
-            total_on_target_squares += round.deployed[i] as u128;
+        if deployed[i] > 0 {
+            total_on_target_squares += deployed[i] as u128;
             deployable_indices.push(i);
         }
     }
-    
+
     // If no squares have existing deployments, we can't deploy
     if deployable_indices.is_empty() || total_on_target_squares == 0 {
         return (Vec::new(), 0);
     }
-    
+
     // Step 2: Determine actual percentage (may reduce if bankroll insufficient)
     let p = percentage as u128;
     let b = bankroll as u128;
     let total_cost_at_requested = (p * total_on_target_squares) / (10000 - p);
-    
+
     let actual_percentage = if total_cost_at_requested > b {
         let p_max = (10000u128 * b) / (total_on_target_squares + b);
         p_max.min(percentage as u128) as u64
     } else {
         percentage
     };
-    
+
     if actual_percentage == 0 {
         return (Vec::new(), 0);
     }
-    
+
     // Step 3: Calculate ideal amount for each deployable square
     let p_actual = actual_percentage as u128;
     let mut batches = Vec::with_capacity(deployable_indices.len());
     let mut total_spent: u64 = 0;
-    
+
     for &i in &deployable_indices {
-        let t = round.deployed[i] as u128;
+        let t = deployed[i] as u128;
         let amount_u128 = (p_actual * t) / (10000 - p_actual);
         let amount = amount_u128.min(u64::MAX as u128) as u64;
-        
+
         if amount > 0 {
             batches.push(DeploymentBatch::single(amount, i));
             total_spent = total_spent.saturating_add(amount);
         }
     }
-    
+
     (batches, total_spent)
 }
 
 /// Calculate deployments using split strategy
 /// Splits the total amount equally across all 25 squares in a single CPI call
 fn calculate_split_deployments(
-    round: &Round,
+    round: &RoundAccount,
     total_amount: u64,
 ) -> (Vec<DeploymentBatch>, u64) {
     if total_amount == 0 {
         return (Vec::new(), 0);
     }
-    
+
     // Check that at least one square has existing deployments
     // (can't deploy to completely empty board)
-    let has_deployments = round.deployed.iter().any(|&d| d > 0);
+    let has_deployments = round.has_deployments();
     if !has_deployments {
         return (Vec::new(), 0);
     }
-    
+
     // Split equally across all 25 squares
     let per_square = total_amount / 25;
-    
+
     if per_square == 0 {
         return (Vec::new(), 0);
     }
-    
+
     // Total actually deployed (may be slightly less due to integer division)
     let actual_total = per_square * 25;
-    
+
     // Single batch with all 25 squares
     let batch = DeploymentBatch::all_squares(per_square);
-    
+
     (vec![batch], actual_total)
 }
 
 /// Calculate deployments using manual strategy
 /// Simply uses the provided amounts directly, one batch per square
-fn calculate_manual_deployments(
-    amounts: [u64; 25],
-) -> (Vec<DeploymentBatch>, u64) {
+fn calculate_manual_deployments(amounts: [u64; 25]) -> (Vec<DeploymentBatch>, u64) {
     let mut batches = Vec::new();
     let mut total: u64 = 0;
-    
+
     for i in 0..25 {
         let amount = amounts[i];
         if amount > 0 {
@@ -490,20 +492,20 @@ fn calculate_manual_deployments(
             total = total.saturating_add(amount);
         }
     }
-    
+
     (batches, total)
 }
 
 /// Calculate deployments using EV waterfill strategy
 fn calculate_ev_deployments(
-    round: &Round,
+    round: &RoundAccount,
     bankroll: u64,
     min_bet: u64,
     max_per_square: u64,
     ore_value_lamports: u64,
 ) -> (Vec<DeploymentBatch>, u64) {
     // Round.deployed is already [u64; 25], no conversion needed
-    let r_deploys = round.deployed;
+    let r_deploys = round.deployed();
 
     let tick: u64 = 100;
 
@@ -559,7 +561,6 @@ const DEN24: u128 = 24_010;
 /// 25 * 1000 - number of squares times the fixed-point multiplier
 const C_LAM: u128 = 25_000;
 
-
 // ============================ Utilities ===============================
 
 #[inline]
@@ -586,8 +587,16 @@ fn snap_down_u64(amount: u64, min_bet: u64, tick: u64) -> u64 {
     if amount == 0 {
         return 0;
     }
-    let a = if tick > 0 { (amount / tick) * tick } else { amount };
-    if a < min_bet { 0 } else { a }
+    let a = if tick > 0 {
+        (amount / tick) * tick
+    } else {
+        amount
+    };
+    if a < min_bet {
+        0
+    } else {
+        a
+    }
 }
 
 // ======================= EV / Profit (lamports) =======================
@@ -596,9 +605,9 @@ fn snap_down_u64(amount: u64, min_bet: u64, tick: u64) -> u64 {
 /// This matches the old profit_fraction but uses explicit S0 instead of
 /// recomputing the sum.
 fn profit_fraction_fixed_s(
-    total_sum: u128,       // S0
-    ti: u128,              // T_i
-    x: u128,               // stake on this square
+    total_sum: u128, // S0
+    ti: u128,        // T_i
+    x: u128,         // stake on this square
     ore_value_lamports: u128,
 ) -> (i128, u128) {
     if x == 0 {
@@ -606,7 +615,7 @@ fn profit_fraction_fixed_s(
     }
 
     let tx = ti.saturating_add(x);
-    let l  = total_sum.saturating_sub(ti);
+    let l = total_sum.saturating_sub(ti);
 
     // SOL part: N_sol = x * ( 891*L - 24010*(T + x) )
     let inner_pos = NUM.saturating_mul(l);
@@ -633,9 +642,7 @@ fn profit_fraction_fixed_s(
     // EV_ore = ore_value * x / (25 * tx)
     // In terms of the same denominator d:
     // n_ore = EV_ore * d = ore_value * x * 1000
-    let ore_num_u = ore_value_lamports
-        .saturating_mul(x)
-        .saturating_mul(1000);
+    let ore_num_u = ore_value_lamports.saturating_mul(x).saturating_mul(1000);
     // Safe conversion: clamp to i128::MAX if overflow (practically impossible for lamport values)
     let ore_num = ore_num_u.min(i128::MAX as u128) as i128;
 
@@ -651,11 +658,7 @@ fn profit_fraction_fixed_s(
 ///
 /// If this cap is <= 0, there is no non-negative-EV stake you can add
 /// on this square at all. We use this as a cheap filter.
-fn dmax_for_square_fixed_s(
-    total_sum: u128,
-    ti: u128,
-    ore_value_lamports: u128,
-) -> u64 {
+fn dmax_for_square_fixed_s(total_sum: u128, ti: u128, ore_value_lamports: u128) -> u64 {
     if total_sum <= ti {
         return 0;
     }
@@ -691,10 +694,10 @@ fn dmax_for_square_fixed_s(
 ///
 /// (before applying discrete constraints / snaps).
 fn optimal_x_for_lambda(
-    total_sum: u128,       // S0
-    ti_u64: u64,           // T_i
+    total_sum: u128, // S0
+    ti_u64: u64,     // T_i
     ore_value_lamports: u64,
-    lambda: u64,           // dimensionless Lagrange multiplier
+    lambda: u64, // dimensionless Lagrange multiplier
 ) -> u64 {
     let ti = u128::from(ti_u64);
     if ti == 0 {
@@ -716,18 +719,14 @@ fn optimal_x_for_lambda(
         .saturating_add(ore.saturating_mul(1_000));
 
     // B(λ) = DEN24 + C_LAM * λ
-    let b_lambda = DEN24.saturating_add(
-        C_LAM.saturating_mul(u128::from(lambda))
-    );
+    let b_lambda = DEN24.saturating_add(C_LAM.saturating_mul(u128::from(lambda)));
 
     if b_lambda == 0 || a == 0 {
         return 0;
     }
 
     // q = T_i * A_i / B(λ)
-    let q = ti
-        .saturating_mul(a)
-        .saturating_div(b_lambda);
+    let q = ti.saturating_mul(a).saturating_div(b_lambda);
 
     if q == 0 {
         return 0;
@@ -747,13 +746,11 @@ fn optimal_x_for_lambda(
     }
 }
 
-
-
 // ========================= Water-filling + filter =====================
 
 #[derive(Clone, Debug)]
 pub struct Allocation {
-    pub per_square: [u64; 25],      // totals per square (for summary)
+    pub per_square: [u64; 25], // totals per square (for summary)
     pub spent: u64,
     /// Integer estimate of total EV (SOL + ore), in lamports.
     pub exp_profit_est_lamports: i64,
@@ -828,12 +825,7 @@ fn allocation_for_lambda(
         }
 
         // Continuous optimum for this λ
-        let mut x = optimal_x_for_lambda(
-            total_sum,
-            ti_u64,
-            ore_value_lamports,
-            lambda,
-        );
+        let mut x = optimal_x_for_lambda(total_sum, ti_u64, ore_value_lamports, lambda);
         if x == 0 {
             continue;
         }
@@ -852,13 +844,8 @@ fn allocation_for_lambda(
 
         // EV check for this x (widening casts are always safe)
         let ti_u128 = u128::from(ti_u64);
-        let x_u128  = u128::from(x);
-        let (n, d)  = profit_fraction_fixed_s(
-            total_sum,
-            ti_u128,
-            x_u128,
-            ore_u128,
-        );
+        let x_u128 = u128::from(x);
+        let (n, d) = profit_fraction_fixed_s(total_sum, ti_u128, x_u128, ore_u128);
 
         if n <= 0 {
             continue;
@@ -916,7 +903,7 @@ fn allocation_for_lambda(
 ///   without exceeding it.
 /// - Still enforces EV>0, margin_ppm, min_bet, tick_size, and max_per_square.
 pub fn plan_max_profit_waterfill(
-    t: [u64; 25],      // current round deployments (lamports)
+    t: [u64; 25], // current round deployments (lamports)
     bankroll: u64,
     min_bet: u64,
     tick_size: u64,
@@ -984,7 +971,7 @@ pub fn plan_max_profit_waterfill(
     let mut lambda_lo: u64 = 0;
     let mut lambda_hi: u64 = 1;
 
-    const MAX_LAMBDA: u64 = 1 << 40;      // arbitrary large ceiling
+    const MAX_LAMBDA: u64 = 1 << 40; // arbitrary large ceiling
     const MAX_LAMBDA_SEARCH_STEPS: usize = 40;
     const MAX_BISECT_STEPS: usize = 40;
 
@@ -1061,4 +1048,3 @@ pub fn plan_max_profit_waterfill(
 
     best_alloc
 }
-

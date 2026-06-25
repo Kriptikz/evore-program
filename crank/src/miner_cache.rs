@@ -3,12 +3,11 @@
 //! Caches ORE miner account data in RAM, refreshing only after deployments
 //! or when a new round is detected.
 
-use evore::ore_api::{miner_pda, Miner};
+use evore::ore_api::{miner_pda, parse_miner};
 use evore::state::managed_miner_auth_pda;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
-use steel::AccountDeserialize;
 use tracing::{debug, info, warn};
 
 use crate::config::DeployerInfo;
@@ -65,12 +64,15 @@ impl MinerCache {
 
     /// Get cached miner by deployer address
     pub fn get_by_deployer(&self, deployer_address: &Pubkey) -> Option<&CachedMiner> {
-        self.miners.values().find(|m| &m.deployer_address == deployer_address)
+        self.miners
+            .values()
+            .find(|m| &m.deployer_address == deployer_address)
     }
 
     /// Check if a miner has already deployed in the given round
     pub fn has_deployed_in_round(&self, miner_address: &Pubkey, round_id: u64) -> bool {
-        self.miners.get(miner_address)
+        self.miners
+            .get(miner_address)
             .map(|m| m.exists && m.round_id == round_id && m.has_deployed)
             .unwrap_or(false)
     }
@@ -93,7 +95,8 @@ impl MinerCache {
 
     /// Check if miner has SOL rewards to recycle
     pub fn has_sol_to_recycle(&self, miner_address: &Pubkey) -> bool {
-        self.miners.get(miner_address)
+        self.miners
+            .get(miner_address)
             .map(|m| m.exists && m.rewards_sol > 0)
             .unwrap_or(false)
     }
@@ -124,17 +127,19 @@ impl MinerCache {
         auth_id: u64,
         current_round_id: u64,
     ) -> Result<usize, CrankError> {
-        let is_new_round = self.last_refresh_round.map_or(true, |r| r != current_round_id);
-        
+        let is_new_round = self
+            .last_refresh_round
+            .map_or(true, |r| r != current_round_id);
+
         // Build list of addresses to fetch
         let mut miner_addresses: Vec<Pubkey> = Vec::new();
         let mut auth_addresses: Vec<Pubkey> = Vec::new();
         let mut deployer_map: HashMap<Pubkey, &DeployerInfo> = HashMap::new();
-        
+
         for deployer in deployers {
             let (auth_pda, _) = managed_miner_auth_pda(deployer.manager_address, auth_id);
             let (miner_addr, _) = miner_pda(auth_pda);
-            
+
             miner_addresses.push(miner_addr);
             auth_addresses.push(auth_pda);
             deployer_map.insert(miner_addr, deployer);
@@ -148,12 +153,14 @@ impl MinerCache {
 
         info!(
             "Refreshing miner cache: {} miners, new_round={}, balance_refresh={}",
-            deployers.len(), is_new_round, self.needs_balance_refresh
+            deployers.len(),
+            is_new_round,
+            self.needs_balance_refresh
         );
 
         // Batch fetch all miner accounts (up to 100 per call)
         let mut fetched_count = 0;
-        
+
         for (chunk_idx, (miner_chunk, auth_chunk)) in miner_addresses
             .chunks(100)
             .zip(auth_addresses.chunks(100))
@@ -168,7 +175,7 @@ impl MinerCache {
             let auth_accounts = rpc_client
                 .get_multiple_accounts(auth_chunk)
                 .map_err(|e| CrankError::Rpc(format!("Failed to fetch auth accounts: {}", e)))?;
-            
+
             // Extract lamport balances from auth accounts
             let auth_balances: Vec<u64> = auth_accounts
                 .iter()
@@ -176,7 +183,9 @@ impl MinerCache {
                 .collect();
 
             // Process results
-            for (i, (miner_account, balance)) in miner_accounts.iter().zip(auth_balances.iter()).enumerate() {
+            for (i, (miner_account, balance)) in
+                miner_accounts.iter().zip(auth_balances.iter()).enumerate()
+            {
                 let global_idx = chunk_idx * 100 + i;
                 let miner_address = miner_addresses[global_idx];
                 let auth_address = auth_addresses[global_idx];
@@ -184,19 +193,19 @@ impl MinerCache {
 
                 let cached = if let Some(account) = miner_account {
                     // Parse miner data
-                    match Miner::try_from_bytes(&account.data) {
+                    match parse_miner(&account.data) {
                         Ok(miner) => {
-                            let has_deployed = miner.deployed.iter().any(|&d| d > 0);
+                            let has_deployed = miner.has_deployed();
                             CachedMiner {
                                 miner_address,
                                 authority: auth_address,
                                 deployer_address: deployer.deployer_address,
                                 manager_address: deployer.manager_address,
-                                checkpoint_id: miner.checkpoint_id,
-                                round_id: miner.round_id,
+                                checkpoint_id: miner.checkpoint_id(),
+                                round_id: miner.round_id(),
                                 has_deployed,
                                 auth_balance: *balance,
-                                rewards_sol: miner.rewards_sol,
+                                rewards_sol: miner.rewards_sol(),
                                 exists: true,
                             }
                         }
@@ -245,17 +254,12 @@ impl MinerCache {
     }
 
     /// Refresh only balances (lighter weight than full refresh)
-    pub fn refresh_balances(
-        &mut self,
-        rpc_client: &RpcClient,
-    ) -> Result<(), CrankError> {
+    pub fn refresh_balances(&mut self, rpc_client: &RpcClient) -> Result<(), CrankError> {
         if !self.needs_balance_refresh {
             return Ok(());
         }
 
-        let auth_addresses: Vec<Pubkey> = self.miners.values()
-            .map(|m| m.authority)
-            .collect();
+        let auth_addresses: Vec<Pubkey> = self.miners.values().map(|m| m.authority).collect();
 
         if auth_addresses.is_empty() {
             return Ok(());
@@ -268,7 +272,7 @@ impl MinerCache {
             let accounts = rpc_client
                 .get_multiple_accounts(chunk)
                 .map_err(|e| CrankError::Rpc(format!("Failed to fetch auth accounts: {}", e)))?;
-            
+
             for (addr, account) in chunk.iter().zip(accounts.iter()) {
                 let balance = account.as_ref().map(|a| a.lamports).unwrap_or(0);
                 // Find and update the miner with this auth
@@ -292,7 +296,8 @@ impl MinerCache {
 
     /// Get miner address for a deployer
     pub fn get_miner_address_for_deployer(&self, deployer_address: &Pubkey) -> Option<Pubkey> {
-        self.miners.values()
+        self.miners
+            .values()
             .find(|m| &m.deployer_address == deployer_address)
             .map(|m| m.miner_address)
     }
@@ -313,7 +318,10 @@ impl MinerCache {
             }
         };
 
-        info!("[MinerCache] Refreshing single miner: {} (auth: {})", miner_address, cached.authority);
+        info!(
+            "[MinerCache] Refreshing single miner: {} (auth: {})",
+            miner_address, cached.authority
+        );
 
         // Fetch both miner account and auth account
         let accounts = rpc_client
@@ -325,19 +333,19 @@ impl MinerCache {
         let auth_balance = auth_account.map(|a| a.lamports).unwrap_or(0);
 
         let updated = if let Some(account) = miner_account {
-            match Miner::try_from_bytes(&account.data) {
+            match parse_miner(&account.data) {
                 Ok(miner) => {
-                    let has_deployed = miner.deployed.iter().any(|&d| d > 0);
+                    let has_deployed = miner.has_deployed();
                     CachedMiner {
                         miner_address: *miner_address,
                         authority: cached.authority,
                         deployer_address: cached.deployer_address,
                         manager_address: cached.manager_address,
-                        checkpoint_id: miner.checkpoint_id,
-                        round_id: miner.round_id,
+                        checkpoint_id: miner.checkpoint_id(),
+                        round_id: miner.round_id(),
                         has_deployed,
                         auth_balance,
-                        rewards_sol: miner.rewards_sol,
+                        rewards_sol: miner.rewards_sol(),
                         exists: true,
                     }
                 }

@@ -1,5 +1,5 @@
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program
+    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program,
 };
 use steel::*;
 
@@ -7,12 +7,12 @@ use crate::{
     consts::{DEPLOYER, MANAGED_MINER_AUTH},
     error::EvoreError,
     instruction::MMAutocheckpoint,
-    ore_api::{self, Miner, Round},
+    ore_api::{self},
     state::{Deployer, Manager},
 };
 
 /// Process MMAutocheckpoint instruction
-/// 
+///
 /// Similar to MMCheckpoint but can be called by deploy_authority instead of manager authority.
 /// This allows the autodeploy crank to checkpoint before deploying.
 pub fn process_mm_autocheckpoint(
@@ -67,10 +67,8 @@ pub fn process_mm_autocheckpoint(
     }
 
     // Verify deployer PDA
-    let (deployer_pda, _deployer_bump) = Pubkey::find_program_address(
-        &[DEPLOYER, manager_account_info.key.as_ref()],
-        &crate::id(),
-    );
+    let (deployer_pda, _deployer_bump) =
+        Pubkey::find_program_address(&[DEPLOYER, manager_account_info.key.as_ref()], &crate::id());
 
     if deployer_pda != *deployer_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -92,7 +90,8 @@ pub fn process_mm_autocheckpoint(
             &[args.bump],
         ],
         &crate::id(),
-    ).map_err(|_| EvoreError::InvalidPDA)?;
+    )
+    .map_err(|_| EvoreError::InvalidPDA)?;
 
     if managed_miner_auth_pda != *managed_miner_auth_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -112,10 +111,10 @@ pub fn process_mm_autocheckpoint(
     let managed_miner_auth_key = *managed_miner_auth_account_info.key;
 
     let checkpoint_round_id = if ore_miner_account_info.data_is_empty() {
-      return Err(ProgramError::InvalidAccountData)
+        return Err(ProgramError::InvalidAccountData);
     } else {
-      let ore_miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-      ore_miner.round_id
+        let ore_miner = ore_api::load_miner(ore_miner_account_info)?;
+        ore_miner.round_id()
     };
 
     // Call ORE checkpoint CPI

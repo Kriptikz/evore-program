@@ -7,7 +7,7 @@ use crate::{
     consts::{DEPLOYER, MANAGED_MINER_AUTH},
     error::EvoreError,
     instruction::RecycleSol,
-    ore_api::{self, Miner},
+    ore_api::{self},
     state::{Deployer, Manager},
 };
 
@@ -64,10 +64,8 @@ pub fn process_recycle_sol(
     }
 
     // Verify deployer PDA
-    let (deployer_pda, _deployer_bump) = Pubkey::find_program_address(
-        &[DEPLOYER, manager_account_info.key.as_ref()],
-        &crate::id(),
-    );
+    let (deployer_pda, _deployer_bump) =
+        Pubkey::find_program_address(&[DEPLOYER, manager_account_info.key.as_ref()], &crate::id());
 
     if deployer_pda != *deployer_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -85,7 +83,11 @@ pub fn process_recycle_sol(
 
     // Verify managed_miner_auth PDA
     let (managed_miner_auth_pda, managed_miner_auth_bump) = Pubkey::find_program_address(
-        &[MANAGED_MINER_AUTH, manager_account_info.key.as_ref(), &auth_id.to_le_bytes()],
+        &[
+            MANAGED_MINER_AUTH,
+            manager_account_info.key.as_ref(),
+            &auth_id.to_le_bytes(),
+        ],
         &crate::id(),
     );
 
@@ -104,8 +106,8 @@ pub fn process_recycle_sol(
         return Ok(());
     }
 
-    let miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-    let claimable_sol = miner.rewards_sol;
+    let miner = ore_api::load_miner(ore_miner_account_info)?;
+    let claimable_sol = miner.rewards_sol();
 
     if claimable_sol == 0 {
         return Ok(());

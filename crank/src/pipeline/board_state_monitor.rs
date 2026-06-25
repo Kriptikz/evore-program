@@ -5,10 +5,9 @@
 
 use std::sync::Arc;
 
-use evore::ore_api::{board_pda, round_pda, Board};
+use evore::ore_api::{board_pda, parse_board, round_pda, BoardAccount};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use steel::AccountDeserialize;
 use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, warn};
 
@@ -34,7 +33,7 @@ pub async fn run(
         // Fetch board state
         match fetch_board_state(&rpc_client).await {
             Ok((board, current_slot)) => {
-                let round_id = board.round_id;
+                let round_id = board.round_id();
                 let (round_address, _) = round_pda(round_id);
 
                 // Update shared state
@@ -42,8 +41,8 @@ pub async fn run(
                     let mut state = shared.board_state.write().await;
                     state.round_id = round_id;
                     state.round_address = round_address;
-                    state.start_slot = board.start_slot;
-                    state.end_slot = board.end_slot;
+                    state.start_slot = board.start_slot();
+                    state.end_slot = board.end_slot();
                     state.current_slot = current_slot;
                     state.update_phase();
 
@@ -61,12 +60,17 @@ pub async fn run(
                             // Log round stats when entering intermission (round ended)
                             let was_in_round = matches!(
                                 old_phase,
-                                RoundPhase::DeploymentWindow { .. } | RoundPhase::LateDeploymentWindow { .. }
+                                RoundPhase::DeploymentWindow { .. }
+                                    | RoundPhase::LateDeploymentWindow { .. }
                             );
-                            let now_in_intermission = matches!(new_phase, RoundPhase::Intermission { .. });
+                            let now_in_intermission =
+                                matches!(new_phase, RoundPhase::Intermission { .. });
 
                             if was_in_round && now_in_intermission {
-                                info!("[BoardStateMonitor] ========== ROUND {} ENDED ==========", round_id);
+                                info!(
+                                    "[BoardStateMonitor] ========== ROUND {} ENDED ==========",
+                                    round_id
+                                );
                                 shared.stats.log_summary(round_id, &new_phase);
                                 info!("[BoardStateMonitor] =====================================");
                             }
@@ -105,7 +109,10 @@ pub async fn run(
 
                     // Broadcast round change - this triggers deployer discovery and miner cache update
                     if let Err(e) = senders.round_changed.send(round_id) {
-                        warn!("[BoardStateMonitor] Failed to broadcast round change: {}", e);
+                        warn!(
+                            "[BoardStateMonitor] Failed to broadcast round change: {}",
+                            e
+                        );
                     }
                 }
             }
@@ -117,21 +124,20 @@ pub async fn run(
 }
 
 /// Fetch current board state and slot from the chain
-async fn fetch_board_state(rpc_client: &RpcClient) -> Result<(Board, u64), String> {
+async fn fetch_board_state(rpc_client: &RpcClient) -> Result<(BoardAccount, u64), String> {
     // Get board account
     let (board_address, _) = board_pda();
     let board_account = rpc_client
         .get_account(&board_address)
         .map_err(|e| format!("Failed to get board account: {}", e))?;
 
-    let board = Board::try_from_bytes(&board_account.data)
-        .map_err(|e| format!("Failed to parse board: {:?}", e))?;
+    let board =
+        parse_board(&board_account.data).map_err(|e| format!("Failed to parse board: {:?}", e))?;
 
     // Get current slot
     let current_slot = rpc_client
         .get_slot()
         .map_err(|e| format!("Failed to get slot: {}", e))?;
 
-    Ok((*board, current_slot))
+    Ok((board, current_slot))
 }
-

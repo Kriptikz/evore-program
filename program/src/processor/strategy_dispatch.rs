@@ -3,7 +3,7 @@ use steel::*;
 
 use crate::{
     error::EvoreError,
-    ore_api::{Board, Round},
+    ore_api::{BoardAccount, RoundAccount},
     processor::process_mm_deploy::{
         calculate_percentage_deployments, plan_max_profit_waterfill, DeploymentBatch,
     },
@@ -26,8 +26,8 @@ pub(crate) fn dispatch_strategy(
     amount: u64,
     squares_mask: u32,
     extra: u32,
-    board: &Board,
-    round: &Round,
+    board: &BoardAccount,
+    round: &RoundAccount,
     clock: &Clock,
 ) -> Result<StrategyResult, ProgramError> {
     let strategy_type = StrategyType::try_from(strategy_type_raw)?;
@@ -40,13 +40,19 @@ pub(crate) fn dispatch_strategy(
             let slots_left = u64::from_le_bytes(strategy_data[16..24].try_into().unwrap());
             let ore_value = u64::from_le_bytes(strategy_data[24..32].try_into().unwrap());
 
-            let current_slots_left = board.end_slot - clock.slot;
+            let current_slots_left = board.end_slot() - clock.slot;
             if current_slots_left > slots_left {
                 return Err(EvoreError::TooManySlotsLeft.into());
             }
 
             let alloc = plan_max_profit_waterfill(
-                round.deployed, amount, min_bet, 100, 10, ore_value, max_per_square,
+                round.deployed(),
+                amount,
+                min_bet,
+                100,
+                10,
+                ore_value,
+                max_per_square,
             );
 
             let mut ev_batches: Vec<DeploymentBatch> = Vec::new();
@@ -59,7 +65,11 @@ pub(crate) fn dispatch_strategy(
             if total == 0 {
                 return Err(EvoreError::NoDeployments.into());
             }
-            Ok(StrategyResult { batches: ev_batches, total_to_deploy: total, needs_automation: true })
+            Ok(StrategyResult {
+                batches: ev_batches,
+                total_to_deploy: total,
+                needs_automation: true,
+            })
         }
         StrategyType::Manual => {
             let mut squares = [false; 25];
@@ -76,7 +86,11 @@ pub(crate) fn dispatch_strategy(
             if total == 0 {
                 return Err(EvoreError::NoDeployments.into());
             }
-            Ok(StrategyResult { batches: vec![DeploymentBatch::new(amount, squares)], total_to_deploy: total, needs_automation: false })
+            Ok(StrategyResult {
+                batches: vec![DeploymentBatch::new(amount, squares)],
+                total_to_deploy: total,
+                needs_automation: false,
+            })
         }
         StrategyType::Split => {
             let per_square = amount / 25;
@@ -84,18 +98,27 @@ pub(crate) fn dispatch_strategy(
                 return Err(EvoreError::NoDeployments.into());
             }
             let total = per_square * 25;
-            Ok(StrategyResult { batches: vec![DeploymentBatch::all_squares(per_square)], total_to_deploy: total, needs_automation: false })
+            Ok(StrategyResult {
+                batches: vec![DeploymentBatch::all_squares(per_square)],
+                total_to_deploy: total,
+                needs_automation: false,
+            })
         }
         StrategyType::Percentage => {
             let percentage = u64::from_le_bytes(strategy_data[0..8].try_into().unwrap());
             let squares_count = u64::from_le_bytes(strategy_data[8..16].try_into().unwrap());
             let bankroll = amount;
 
-            let (batches, total) = calculate_percentage_deployments(round, bankroll, percentage, squares_count);
+            let (batches, total) =
+                calculate_percentage_deployments(round, bankroll, percentage, squares_count);
             if total == 0 {
                 return Err(EvoreError::NoDeployments.into());
             }
-            Ok(StrategyResult { batches, total_to_deploy: total, needs_automation: true })
+            Ok(StrategyResult {
+                batches,
+                total_to_deploy: total,
+                needs_automation: true,
+            })
         }
         StrategyType::DynamicSplitPercentage => {
             let percentage = u64::from_le_bytes(strategy_data[0..8].try_into().unwrap());
@@ -111,11 +134,18 @@ pub(crate) fn dispatch_strategy(
             let bankroll = amount;
 
             for i in 0..25 {
-                if (squares_mask_val >> i) & 1 == 0 { continue; }
-                let t = round.deployed[i] as u128;
-                if t == 0 { continue; }
+                if (squares_mask_val >> i) & 1 == 0 {
+                    continue;
+                }
+                let deployed = round.deployed();
+                let t = deployed[i] as u128;
+                if t == 0 {
+                    continue;
+                }
                 let amount_i = (p * t / (10000 - p)).min(u64::MAX as u128) as u64;
-                if amount_i == 0 { continue; }
+                if amount_i == 0 {
+                    continue;
+                }
                 if total.saturating_add(amount_i) > bankroll {
                     let remaining = bankroll.saturating_sub(total);
                     if remaining > 0 {
@@ -131,7 +161,11 @@ pub(crate) fn dispatch_strategy(
             if total == 0 {
                 return Err(EvoreError::NoDeployments.into());
             }
-            Ok(StrategyResult { batches: dsp_batches, total_to_deploy: total, needs_automation: true })
+            Ok(StrategyResult {
+                batches: dsp_batches,
+                total_to_deploy: total,
+                needs_automation: true,
+            })
         }
         StrategyType::DynamicEv => {
             let max_ps = u64::from_le_bytes(strategy_data[0..8].try_into().unwrap());
@@ -145,13 +179,19 @@ pub(crate) fn dispatch_strategy(
                 return Err(EvoreError::InvalidStrategyData.into());
             }
 
-            let current_slots_left = board.end_slot.saturating_sub(clock.slot);
+            let current_slots_left = board.end_slot().saturating_sub(clock.slot);
             if current_slots_left > sl {
                 return Err(EvoreError::TooManySlotsLeft.into());
             }
 
             let alloc = plan_max_profit_waterfill(
-                round.deployed, amount, min_b, 100, 10, ore_value, max_ps,
+                round.deployed(),
+                amount,
+                min_b,
+                100,
+                10,
+                ore_value,
+                max_ps,
             );
 
             let mut dynev_batches: Vec<DeploymentBatch> = Vec::new();
@@ -164,7 +204,11 @@ pub(crate) fn dispatch_strategy(
             if total == 0 {
                 return Err(EvoreError::NoDeployments.into());
             }
-            Ok(StrategyResult { batches: dynev_batches, total_to_deploy: total, needs_automation: true })
+            Ok(StrategyResult {
+                batches: dynev_batches,
+                total_to_deploy: total,
+                needs_automation: true,
+            })
         }
     }
 }

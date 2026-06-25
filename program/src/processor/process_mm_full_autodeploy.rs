@@ -4,16 +4,16 @@ use solana_program::{
 use steel::*;
 
 use crate::{
-    consts::{DEPLOY_FEE, DEPLOYER, FEE_COLLECTOR, MANAGED_MINER_AUTH},
+    consts::{DEPLOYER, DEPLOY_FEE, FEE_COLLECTOR, MANAGED_MINER_AUTH},
     entropy_api,
     error::EvoreError,
     instruction::MMFullAutodeploy,
-    ore_api::{self, Board, Miner, Round},
+    ore_api::{self},
     state::{Deployer, Manager},
 };
 
 /// Process MMFullAutodeploy instruction
-/// 
+///
 /// Combined checkpoint (if needed) + recycle (if needed) + deploy in one instruction.
 /// Funds come from managed_miner_auth directly.
 pub fn process_mm_full_autodeploy(
@@ -80,10 +80,8 @@ pub fn process_mm_full_autodeploy(
     }
 
     // Verify deployer PDA
-    let (expected_deployer, _) = Pubkey::find_program_address(
-        &[DEPLOYER, manager_account_info.key.as_ref()],
-        &crate::id(),
-    );
+    let (expected_deployer, _) =
+        Pubkey::find_program_address(&[DEPLOYER, manager_account_info.key.as_ref()], &crate::id());
 
     if expected_deployer != *deployer_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -127,12 +125,12 @@ pub fn process_mm_full_autodeploy(
     }
 
     // Get round and board for operations
-    let round = round_account_info.as_account::<Round>(&ore_api::id())?;
-    let board = board_account_info.as_account::<Board>(&ore_api::id())?;
+    let round = ore_api::load_round(round_account_info)?;
+    let board = ore_api::load_board(board_account_info)?;
     let clock = Clock::get()?;
 
     // Check if round hasn't ended
-    if clock.slot >= board.end_slot {
+    if clock.slot >= board.end_slot() {
         return Err(EvoreError::EndSlotReached.into());
     }
 
@@ -148,16 +146,19 @@ pub fn process_mm_full_autodeploy(
     // STEP 1: Checkpoint if needed (check miner.checkpoint_id < round.id)
     // ==========================================================================
     let checkpoint_round_id = if ore_miner_account_info.data_is_empty() {
-      return Err(ProgramError::InvalidAccountData)
+        return Err(ProgramError::InvalidAccountData);
     } else {
-      let ore_miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-      ore_miner.round_id
+        let ore_miner = ore_api::load_miner(ore_miner_account_info)?;
+        ore_miner.round_id()
     };
-    
+
     // Check miner state only if it exists
     let (needs_checkpoint, is_already_deployed) = if !ore_miner_account_info.data_is_empty() {
-        let miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-        (miner.checkpoint_id < checkpoint_round_id, miner.round_id == board.round_id)
+        let miner = ore_api::load_miner(ore_miner_account_info)?;
+        (
+            miner.checkpoint_id() < checkpoint_round_id,
+            miner.round_id() == board.round_id(),
+        )
     } else {
         (false, false) // First ever deploy, miner doesn't exist yet
     };
@@ -188,8 +189,8 @@ pub fn process_mm_full_autodeploy(
     // STEP 2: Recycle SOL if needed (claim SOL rewards - stays in managed_miner_auth)
     // ==========================================================================
     let claimable_sol = if !ore_miner_account_info.data_is_empty() {
-        let miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-        miner.rewards_sol
+        let miner = ore_api::load_miner(ore_miner_account_info)?;
+        miner.rewards_sol()
     } else {
         0
     };
@@ -235,10 +236,10 @@ pub fn process_mm_full_autodeploy(
     if max_per_round > 0 {
         // Get already deployed amount for this round (if miner exists and is in current round)
         let already_deployed = if !ore_miner_account_info.data_is_empty() {
-            let miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-            if miner.round_id == board.round_id {
+            let miner = ore_api::load_miner(ore_miner_account_info)?;
+            if miner.round_id() == board.round_id() {
                 // Sum all deployed amounts for current round
-                miner.deployed.iter().sum::<u64>()
+                miner.deployed().iter().sum::<u64>()
             } else {
                 0
             }
@@ -254,7 +255,9 @@ pub fn process_mm_full_autodeploy(
 
     // Calculate fees
     let bps_fee_amount = if bps_fee > 0 {
-        total_to_deploy.saturating_mul(bps_fee).saturating_div(10_000)
+        total_to_deploy
+            .saturating_mul(bps_fee)
+            .saturating_div(10_000)
     } else {
         0
     };
@@ -264,7 +267,7 @@ pub fn process_mm_full_autodeploy(
     // Calculate required balance
     const AUTH_PDA_RENT: u64 = 890_880;
     let miner_rent = if ore_miner_account_info.data_is_empty() {
-        let size = 8 + std::mem::size_of::<Miner>();
+        let size = ore_api::miner_rent_size();
         solana_program::rent::Rent::default().minimum_balance(size)
     } else {
         0
@@ -285,39 +288,39 @@ pub fn process_mm_full_autodeploy(
 
     // Transfer fees only on first deploy of the round
     if !is_already_deployed {
-      // Transfer protocol fee
-      if protocol_fee > 0 {
-          solana_program::program::invoke_signed(
-              &solana_program::system_instruction::transfer(
-                  managed_miner_auth_account_info.key,
-                  fee_collector_account_info.key,
-                  protocol_fee,
-              ),
-              &[
-                  managed_miner_auth_account_info.clone(),
-                  fee_collector_account_info.clone(),
-                  system_program_info.clone(),
-              ],
-              &[managed_miner_auth_seeds],
-          )?;
-      }
+        // Transfer protocol fee
+        if protocol_fee > 0 {
+            solana_program::program::invoke_signed(
+                &solana_program::system_instruction::transfer(
+                    managed_miner_auth_account_info.key,
+                    fee_collector_account_info.key,
+                    protocol_fee,
+                ),
+                &[
+                    managed_miner_auth_account_info.clone(),
+                    fee_collector_account_info.clone(),
+                    system_program_info.clone(),
+                ],
+                &[managed_miner_auth_seeds],
+            )?;
+        }
 
-      // Transfer deployer fee to deploy_authority
-      if deployer_fee > 0 {
-          solana_program::program::invoke_signed(
-              &solana_program::system_instruction::transfer(
-                  managed_miner_auth_account_info.key,
-                  signer.key,
-                  deployer_fee,
-              ),
-              &[
-                  managed_miner_auth_account_info.clone(),
-                  signer.clone(),
-                  system_program_info.clone(),
-              ],
-              &[managed_miner_auth_seeds],
-          )?;
-      }
+        // Transfer deployer fee to deploy_authority
+        if deployer_fee > 0 {
+            solana_program::program::invoke_signed(
+                &solana_program::system_instruction::transfer(
+                    managed_miner_auth_account_info.key,
+                    signer.key,
+                    deployer_fee,
+                ),
+                &[
+                    managed_miner_auth_account_info.clone(),
+                    signer.clone(),
+                    system_program_info.clone(),
+                ],
+                &[managed_miner_auth_seeds],
+            )?;
+        }
     }
 
     // Execute ORE deploy CPI
@@ -341,7 +344,7 @@ pub fn process_mm_full_autodeploy(
             *managed_miner_auth_account_info.key,
             *managed_miner_auth_account_info.key,
             amount,
-            round.id,
+            round.id(),
             squares,
         ),
         &deploy_accounts,

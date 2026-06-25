@@ -4,11 +4,11 @@ use solana_program::{
 use steel::*;
 
 use crate::{
-    consts::{STRATEGY_DEPLOYER, MANAGED_MINER_AUTH},
+    consts::{MANAGED_MINER_AUTH, STRATEGY_DEPLOYER},
     error::EvoreError,
     instruction::RecycleStratSol,
-    ore_api::{self, Miner},
-    state::{StrategyDeployer, Manager},
+    ore_api::{self},
+    state::{Manager, StrategyDeployer},
 };
 
 pub fn process_recycle_strat_sol(
@@ -18,16 +18,9 @@ pub fn process_recycle_strat_sol(
     let args = RecycleStratSol::try_from_bytes(instruction_data)?;
     let auth_id = u64::from_le_bytes(args.auth_id);
 
-    let [
-        signer,
-        manager_account_info,
-        strat_deployer_account_info,
-        managed_miner_auth_account_info,
-        ore_miner_account_info,
-        board_account_info,
-        ore_program,
-        system_program_info,
-    ] = accounts else {
+    let [signer, manager_account_info, strat_deployer_account_info, managed_miner_auth_account_info, ore_miner_account_info, board_account_info, ore_program, system_program_info] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -72,7 +65,11 @@ pub fn process_recycle_strat_sol(
         return Err(EvoreError::InvalidDeployAuthority.into());
     }
     let (managed_miner_auth_pda, managed_miner_auth_bump) = Pubkey::find_program_address(
-        &[MANAGED_MINER_AUTH, manager_account_info.key.as_ref(), &auth_id.to_le_bytes()],
+        &[
+            MANAGED_MINER_AUTH,
+            manager_account_info.key.as_ref(),
+            &auth_id.to_le_bytes(),
+        ],
         &crate::id(),
     );
 
@@ -89,8 +86,8 @@ pub fn process_recycle_strat_sol(
         return Ok(());
     }
 
-    let miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
-    let claimable_sol = miner.rewards_sol;
+    let miner = ore_api::load_miner(ore_miner_account_info)?;
+    let claimable_sol = miner.rewards_sol();
 
     if claimable_sol == 0 {
         return Ok(());

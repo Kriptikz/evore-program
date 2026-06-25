@@ -1,14 +1,12 @@
-use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey,
-};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use steel::*;
 
 use crate::{
-    consts::{STRATEGY_DEPLOYER, MANAGED_MINER_AUTH},
+    consts::{MANAGED_MINER_AUTH, STRATEGY_DEPLOYER},
     error::EvoreError,
     instruction::MMStratAutocheckpoint,
-    ore_api::{self, Miner},
-    state::{StrategyDeployer, Manager},
+    ore_api::{self},
+    state::{Manager, StrategyDeployer},
 };
 
 pub fn process_mm_strat_autocheckpoint(
@@ -18,14 +16,9 @@ pub fn process_mm_strat_autocheckpoint(
     let args = MMStratAutocheckpoint::try_from_bytes(instruction_data)?;
     let auth_id = u64::from_le_bytes(args.auth_id);
 
-    let [
-        signer,
-        manager_account_info,
-        strat_deployer_account_info,
-        managed_miner_auth_account_info,
-        ore_miner_account_info,
-        ore_program,
-    ] = accounts else {
+    let [signer, manager_account_info, strat_deployer_account_info, managed_miner_auth_account_info, ore_miner_account_info, ore_program] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -70,7 +63,8 @@ pub fn process_mm_strat_autocheckpoint(
             &[args.bump],
         ],
         &crate::id(),
-    ).map_err(|_| EvoreError::InvalidPDA)?;
+    )
+    .map_err(|_| EvoreError::InvalidPDA)?;
 
     if managed_miner_auth_pda != *managed_miner_auth_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -85,7 +79,7 @@ pub fn process_mm_strat_autocheckpoint(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let _ore_miner = ore_miner_account_info.as_account::<Miner>(&ore_api::id())?;
+    let _ore_miner = ore_api::load_miner(ore_miner_account_info)?;
 
     Ok(())
 }

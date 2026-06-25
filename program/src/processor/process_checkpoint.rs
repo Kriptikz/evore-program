@@ -1,10 +1,13 @@
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program
+    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program,
 };
 use steel::*;
 
 use crate::{
-    error::EvoreError, instruction::MMCheckpoint, ore_api::{self, Round}, state::Manager
+    error::EvoreError,
+    instruction::MMCheckpoint,
+    ore_api::{self},
+    state::Manager,
 };
 
 pub fn process_checkpoint(
@@ -14,17 +17,9 @@ pub fn process_checkpoint(
     let args = MMCheckpoint::try_from_bytes(instruction_data)?;
     let auth_id = u64::from_le_bytes(args.auth_id);
 
-    let [
-            signer,
-            manager_account_info,
-            managed_miner_auth_account_info,
-            ore_miner_account_info,
-            treasury_account_info,
-            board_account_info,
-            round_account_info,
-            system_program,
-            ore_program,
-    ] = accounts else {
+    let [signer, manager_account_info, managed_miner_auth_account_info, ore_miner_account_info, treasury_account_info, board_account_info, round_account_info, system_program, ore_program] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -52,15 +47,13 @@ pub fn process_checkpoint(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let manager = manager_account_info
-        .as_account::<Manager>(&crate::id())?;
+    let manager = manager_account_info.as_account::<Manager>(&crate::id())?;
 
     if manager.authority != *signer.key {
         return Err(EvoreError::NotAuthorized.into());
     }
 
-    let round = round_account_info
-        .as_account::<Round>(&ore_api::id())?;
+    let round = ore_api::load_round(round_account_info)?;
 
     // Use create_program_address with bump from instruction data for deterministic CU usage
     let managed_miner_auth_pda = Pubkey::create_program_address(
@@ -71,31 +64,27 @@ pub fn process_checkpoint(
             &[args.bump],
         ],
         &crate::id(),
-    ).map_err(|_| EvoreError::InvalidPDA)?;
+    )
+    .map_err(|_| EvoreError::InvalidPDA)?;
 
     if managed_miner_auth_pda != *managed_miner_auth_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
     }
 
-    let checkpoint_accounts = 
-        vec![
-            managed_miner_auth_account_info.clone(),
-            board_account_info.clone(),
-            ore_miner_account_info.clone(),
-            round_account_info.clone(),
-            treasury_account_info.clone(),
-            system_program.clone(),
-            ore_program.clone(),
-        ];
+    let checkpoint_accounts = vec![
+        managed_miner_auth_account_info.clone(),
+        board_account_info.clone(),
+        ore_miner_account_info.clone(),
+        round_account_info.clone(),
+        treasury_account_info.clone(),
+        system_program.clone(),
+        ore_program.clone(),
+    ];
 
     let managed_miner_auth_key = checkpoint_accounts[0].key.clone();
 
     solana_program::program::invoke_signed(
-        &ore_api::checkpoint(
-            managed_miner_auth_key,
-            managed_miner_auth_key,
-            round.id,
-        ),
+        &ore_api::checkpoint(managed_miner_auth_key, managed_miner_auth_key, round.id()),
         &checkpoint_accounts,
         &[&[
             crate::consts::MANAGED_MINER_AUTH,

@@ -1,11 +1,9 @@
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program
+    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program,
 };
 use steel::*;
 
-use crate::{
-    error::EvoreError, instruction::MMCreateMiner, ore_api, state::Manager
-};
+use crate::{error::EvoreError, instruction::MMCreateMiner, ore_api, state::Manager};
 
 pub fn process_mm_create_miner(
     accounts: &[AccountInfo],
@@ -77,7 +75,8 @@ pub fn process_mm_create_miner(
             &[args.bump],
         ],
         &crate::id(),
-    ).map_err(|_| EvoreError::InvalidPDA)?;
+    )
+    .map_err(|_| EvoreError::InvalidPDA)?;
 
     if managed_miner_auth_pda != *managed_miner_auth_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -87,17 +86,17 @@ pub fn process_mm_create_miner(
     // During the first automate call, ORE creates both automation and miner accounts
     // The automation account will be closed in the second call, returning its rent
     // But we need enough for both during the first call, plus the checkpoint fee
-    let miner_size = 8 + std::mem::size_of::<ore_api::Miner>();
+    let miner_size = ore_api::miner_rent_size();
     let miner_rent = solana_program::rent::Rent::default().minimum_balance(miner_size);
-    
+
     // Automation account size (estimate based on ORE program)
     // It stores: executor (32) + authority (32) + various u64 fields
-    let automation_size = 8 + 32 + 32 + 8 * 6; // discriminator + pubkeys + u64 fields
+    let automation_size = ore_api::automation_rent_size();
     let automation_rent = solana_program::rent::Rent::default().minimum_balance(automation_size);
-    
+
     // ORE requires checkpoint_fee to be held in the miner account
-    let total_required = miner_rent + automation_rent + ore_api::CHECKPOINT_FEE ;
-    
+    let total_required = miner_rent + automation_rent + ore_api::CHECKPOINT_FEE;
+
     // Transfer SOL from signer to managed_miner_auth for account creation
     solana_program::program::invoke(
         &solana_program::system_instruction::transfer(
@@ -134,7 +133,7 @@ pub fn process_mm_create_miner(
     solana_program::program::invoke_signed(
         &ore_api::automate(
             *managed_miner_auth_account_info.key,
-           0,
+            0,
             0,
             *executor_1_account_info.key, // executor = signer
             0,

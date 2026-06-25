@@ -5,6 +5,24 @@ const { LAMPORTS_PER_SOL } = require("./constants");
 // Account Decoders
 // =============================================================================
 
+const ORE_BOARD_SIZE = 8 + 8 * 4;
+const ORE_BOARD_V4_SIZE = ORE_BOARD_SIZE;
+const ORE_ROUND_V4_SIZE = 8 + 944;
+const ORE_MINER_V4_SIZE = 8 + 744;
+
+function readU64Array(buffer, offset, length) {
+  const values = [];
+  for (let i = 0; i < length; i++) {
+    values.push(buffer.readBigUInt64LE(offset));
+    offset += 8;
+  }
+  return { values, offset };
+}
+
+function sumBigints(values) {
+  return values.reduce((sum, value) => sum + value, 0n);
+}
+
 /**
  * Decodes a Manager account from raw account data
  * @param {Buffer|Uint8Array} data - Raw account data from getAccountInfo
@@ -74,7 +92,15 @@ function decodeOreBoard(data) {
   const endSlot = buffer.readBigUInt64LE(24);
   const epochId = buffer.readBigUInt64LE(32);
   
-  return { roundId, startSlot, endSlot, epochId };
+  return {
+    roundId,
+    startSlot,
+    endSlot,
+    // Board and BoardV4 share this offset; legacy callers expect epochId.
+    epochId,
+    productionCostEma: buffer.length >= ORE_BOARD_V4_SIZE ? epochId : 0n,
+    version: buffer.length >= ORE_BOARD_V4_SIZE ? 4 : 3,
+  };
 }
 
 /**
@@ -84,6 +110,10 @@ function decodeOreBoard(data) {
  */
 function decodeOreRound(data) {
   const buffer = Buffer.from(data);
+
+  if (buffer.length >= ORE_ROUND_V4_SIZE) {
+    return decodeOreRoundV4(buffer);
+  }
   
   // Skip 8-byte discriminator
   let offset = 8;
@@ -91,23 +121,17 @@ function decodeOreRound(data) {
   const id = buffer.readBigUInt64LE(offset);
   offset += 8;
   
-  // deployed: [u64; 25]
-  const deployed = [];
-  for (let i = 0; i < 25; i++) {
-    deployed.push(buffer.readBigUInt64LE(offset));
-    offset += 8;
-  }
+  let result = readU64Array(buffer, offset, 25);
+  const deployed = result.values;
+  offset = result.offset;
   
   // slot_hash: [u8; 32]
   const slotHash = buffer.slice(offset, offset + 32);
   offset += 32;
   
-  // count: [u64; 25]
-  const count = [];
-  for (let i = 0; i < 25; i++) {
-    count.push(buffer.readBigUInt64LE(offset));
-    offset += 8;
-  }
+  result = readU64Array(buffer, offset, 25);
+  const count = result.values;
+  offset = result.offset;
   
   const expiresAt = buffer.readBigUInt64LE(offset);
   offset += 8;
@@ -149,6 +173,80 @@ function decodeOreRound(data) {
     totalMiners,
     totalVaulted,
     totalWinnings,
+    version: 3,
+  };
+}
+
+function decodeOreRoundV4(buffer) {
+  let offset = 8;
+
+  const id = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  let result = readU64Array(buffer, offset, 25);
+  const sol = result.values;
+  offset = result.offset;
+
+  result = readU64Array(buffer, offset, 25);
+  const mass = result.values;
+  offset = result.offset;
+
+  result = readU64Array(buffer, offset, 25);
+  const miners = result.values;
+  offset = result.offset;
+
+  const entropy = buffer.slice(offset, offset + 32);
+  offset += 32;
+
+  const closesAt = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const motherlode = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const rentPayer = new PublicKey(buffer.slice(offset, offset + 32));
+  offset += 32;
+
+  result = readU64Array(buffer, offset, 25);
+  const rewards = result.values;
+  offset = result.offset;
+
+  const protocolFee = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const totalReturned = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const uniqueMiners = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const winner = new PublicKey(buffer.slice(offset, offset + 32));
+
+  return {
+    id,
+    deployed: sol,
+    slotHash: entropy,
+    count: miners,
+    expiresAt: closesAt,
+    motherlode,
+    rentPayer,
+    topMiner: winner,
+    topMinerReward: sumBigints(rewards),
+    totalDeployed: sumBigints(sol),
+    totalMiners: uniqueMiners,
+    totalVaulted: protocolFee,
+    totalWinnings: totalReturned,
+    sol,
+    mass,
+    miners,
+    entropy,
+    closesAt,
+    rewards,
+    protocolFee,
+    totalReturned,
+    uniqueMiners,
+    winner,
+    version: 4,
   };
 }
 
@@ -159,6 +257,10 @@ function decodeOreRound(data) {
  */
 function decodeOreMiner(data) {
   const buffer = Buffer.from(data);
+
+  if (buffer.length >= ORE_MINER_V4_SIZE) {
+    return decodeOreMinerV4(buffer);
+  }
   
   // Skip 8-byte discriminator
   let offset = 8;
@@ -166,19 +268,13 @@ function decodeOreMiner(data) {
   const authority = new PublicKey(buffer.slice(offset, offset + 32));
   offset += 32;
   
-  // deployed: [u64; 25]
-  const deployed = [];
-  for (let i = 0; i < 25; i++) {
-    deployed.push(buffer.readBigUInt64LE(offset));
-    offset += 8;
-  }
+  let result = readU64Array(buffer, offset, 25);
+  const deployed = result.values;
+  offset = result.offset;
   
-  // cumulative: [u64; 25]
-  const cumulative = [];
-  for (let i = 0; i < 25; i++) {
-    cumulative.push(buffer.readBigUInt64LE(offset));
-    offset += 8;
-  }
+  result = readU64Array(buffer, offset, 25);
+  const cumulative = result.values;
+  offset = result.offset;
   
   const checkpointFee = buffer.readBigUInt64LE(offset);
   offset += 8;
@@ -232,6 +328,92 @@ function decodeOreMiner(data) {
     lifetimeRewardsSol,
     lifetimeRewardsOre,
     lifetimeDeployed,
+    version: 3,
+  };
+}
+
+function decodeOreMinerV4(buffer) {
+  let offset = 8;
+
+  const authority = new PublicKey(buffer.slice(offset, offset + 32));
+  offset += 32;
+
+  const autoReturn = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const checkpointId = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const checkpointFee = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  let result = readU64Array(buffer, offset, 25);
+  const sol = result.values;
+  offset = result.offset;
+
+  result = readU64Array(buffer, offset, 25);
+  const mass = result.values;
+  offset = result.offset;
+
+  result = readU64Array(buffer, offset, 25);
+  const massCumulative = result.values;
+  offset = result.offset;
+
+  const roundId = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const rewardsFactor = buffer.slice(offset, offset + 16);
+  offset += 16;
+
+  const solReturned = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const oreRefined = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const oreUnrefined = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const lastClaimOreAt = buffer.readBigInt64LE(offset);
+  offset += 8;
+
+  const lastClaimSolAt = buffer.readBigInt64LE(offset);
+  offset += 8;
+
+  const lifetimeRewards = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const lifetimeDeployed = buffer.readBigUInt64LE(offset);
+  offset += 8;
+
+  const lifetimeReturnedSol = buffer.readBigUInt64LE(offset);
+
+  return {
+    authority,
+    deployed: sol,
+    cumulative: massCumulative,
+    checkpointFee,
+    checkpointId,
+    lastClaimOreAt,
+    lastClaimSolAt,
+    rewardsFactor,
+    rewardsSol: solReturned,
+    rewardsOre: oreUnrefined,
+    refinedOre: oreRefined,
+    roundId,
+    lifetimeRewardsSol: lifetimeReturnedSol,
+    lifetimeRewardsOre: lifetimeRewards,
+    lifetimeDeployed,
+    autoReturn,
+    sol,
+    mass,
+    massCumulative,
+    solReturned,
+    oreRefined,
+    oreUnrefined,
+    lifetimeRewards,
+    lifetimeReturnedSol,
+    version: 4,
   };
 }
 

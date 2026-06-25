@@ -43,6 +43,8 @@ export declare function decodeOreBoard(data: Buffer | Uint8Array): {
   startSlot: bigint;
   endSlot: bigint;
   epochId: bigint;
+  productionCostEma: bigint;
+  version: number;
 };
 
 export declare function decodeOreRound(data: Buffer | Uint8Array): {
@@ -59,6 +61,17 @@ export declare function decodeOreRound(data: Buffer | Uint8Array): {
   totalMiners: bigint;
   totalVaulted: bigint;
   totalWinnings: bigint;
+  sol?: bigint[];
+  mass?: bigint[];
+  miners?: bigint[];
+  entropy?: Buffer;
+  closesAt?: bigint;
+  rewards?: bigint[];
+  protocolFee?: bigint;
+  totalReturned?: bigint;
+  uniqueMiners?: bigint;
+  winner?: PublicKey;
+  version: number;
 };
 
 export declare function decodeOreMiner(data: Buffer | Uint8Array): {
@@ -77,6 +90,16 @@ export declare function decodeOreMiner(data: Buffer | Uint8Array): {
   lifetimeRewardsSol: bigint;
   lifetimeRewardsOre: bigint;
   lifetimeDeployed: bigint;
+  autoReturn?: bigint;
+  sol?: bigint[];
+  mass?: bigint[];
+  massCumulative?: bigint[];
+  solReturned?: bigint;
+  oreRefined?: bigint;
+  oreUnrefined?: bigint;
+  lifetimeRewards?: bigint;
+  lifetimeReturnedSol?: bigint;
+  version: number;
 };
 
 // Formatting
