@@ -868,77 +868,75 @@ pub fn automation_rent_size() -> usize {
     AUTOMATION_V4_SIZE
 }
 
-pub fn load_board(account_info: &AccountInfo) -> Result<BoardAccount, ProgramError> {
+pub fn load_board(account_info: &AccountInfo) -> Result<Box<BoardAccount>, ProgramError> {
     load_board_checked(account_info)
 }
 
-pub fn parse_board(data: &[u8]) -> Result<BoardAccount, ProgramError> {
-    // Board and BoardV4 have the same wire size; the fields this program uses
-    // are identical, so parsing as V4 is safe for migrated and legacy boards.
+pub fn parse_board(data: &[u8]) -> Result<Box<BoardAccount>, ProgramError> {
     if data.len() >= BOARD_V4_SIZE {
         let board = BoardV4::try_from_bytes(data)?;
-        Ok(BoardAccount::BoardV4(*board))
+        Ok(Box::new(BoardAccount::BoardV4(*board)))
     } else {
         let board = Board::try_from_bytes(data)?;
-        Ok(BoardAccount::Board(*board))
+        Ok(Box::new(BoardAccount::Board(*board)))
     }
 }
 
-pub fn load_round(account_info: &AccountInfo) -> Result<RoundAccount, ProgramError> {
+pub fn load_round(account_info: &AccountInfo) -> Result<Box<RoundAccount>, ProgramError> {
     load_round_checked(account_info)
 }
 
-pub fn parse_round(data: &[u8]) -> Result<RoundAccount, ProgramError> {
+pub fn parse_round(data: &[u8]) -> Result<Box<RoundAccount>, ProgramError> {
     if data.len() >= ROUND_V4_SIZE {
         let round = RoundV4::try_from_bytes(data)?;
-        Ok(RoundAccount::RoundV4(*round))
+        Ok(Box::new(RoundAccount::RoundV4(*round)))
     } else {
         let round = Round::try_from_bytes(data)?;
-        Ok(RoundAccount::Round(*round))
+        Ok(Box::new(RoundAccount::Round(*round)))
     }
 }
 
-pub fn load_miner(account_info: &AccountInfo) -> Result<MinerAccount, ProgramError> {
+pub fn load_miner(account_info: &AccountInfo) -> Result<Box<MinerAccount>, ProgramError> {
     load_miner_checked(account_info)
 }
 
-pub fn parse_miner(data: &[u8]) -> Result<MinerAccount, ProgramError> {
+pub fn parse_miner(data: &[u8]) -> Result<Box<MinerAccount>, ProgramError> {
     if data.len() >= MINER_V4_SIZE {
         let miner = MinerV4::try_from_bytes(data)?;
-        Ok(MinerAccount::MinerV4(*miner))
+        Ok(Box::new(MinerAccount::MinerV4(*miner)))
     } else {
         let miner = Miner::try_from_bytes(data)?;
-        Ok(MinerAccount::Miner(*miner))
+        Ok(Box::new(MinerAccount::Miner(*miner)))
     }
 }
 
-pub fn load_board_checked(account_info: &AccountInfo) -> Result<BoardAccount, ProgramError> {
+pub fn load_board_checked(account_info: &AccountInfo) -> Result<Box<BoardAccount>, ProgramError> {
     if account_info.data_len() >= BOARD_V4_SIZE {
         let board = account_info.as_account::<BoardV4>(&PROGRAM_ID)?;
-        Ok(BoardAccount::BoardV4(*board))
+        Ok(Box::new(BoardAccount::BoardV4(*board)))
     } else {
         let board = account_info.as_account::<Board>(&PROGRAM_ID)?;
-        Ok(BoardAccount::Board(*board))
+        Ok(Box::new(BoardAccount::Board(*board)))
     }
 }
 
-pub fn load_round_checked(account_info: &AccountInfo) -> Result<RoundAccount, ProgramError> {
+pub fn load_round_checked(account_info: &AccountInfo) -> Result<Box<RoundAccount>, ProgramError> {
     if account_info.data_len() >= ROUND_V4_SIZE {
         let round = account_info.as_account::<RoundV4>(&PROGRAM_ID)?;
-        Ok(RoundAccount::RoundV4(*round))
+        Ok(Box::new(RoundAccount::RoundV4(*round)))
     } else {
         let round = account_info.as_account::<Round>(&PROGRAM_ID)?;
-        Ok(RoundAccount::Round(*round))
+        Ok(Box::new(RoundAccount::Round(*round)))
     }
 }
 
-pub fn load_miner_checked(account_info: &AccountInfo) -> Result<MinerAccount, ProgramError> {
+pub fn load_miner_checked(account_info: &AccountInfo) -> Result<Box<MinerAccount>, ProgramError> {
     if account_info.data_len() >= MINER_V4_SIZE {
         let miner = account_info.as_account::<MinerV4>(&PROGRAM_ID)?;
-        Ok(MinerAccount::MinerV4(*miner))
+        Ok(Box::new(MinerAccount::MinerV4(*miner)))
     } else {
         let miner = account_info.as_account::<Miner>(&PROGRAM_ID)?;
-        Ok(MinerAccount::Miner(*miner))
+        Ok(Box::new(MinerAccount::Miner(*miner)))
     }
 }
 
