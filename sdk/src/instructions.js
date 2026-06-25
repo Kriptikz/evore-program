@@ -316,6 +316,7 @@ function mmCheckpointInstruction(signer, manager, roundId, authId = 0n) {
 function mmClaimSolInstruction(signer, manager, authId = 0n) {
   const [managedMinerAuth, bump] = getManagedMinerAuthPda(manager, authId);
   const [oreMiner] = getOreMinerPda(managedMinerAuth);
+  const [oreBoard] = getOreBoardPda();
   
   const data = Buffer.alloc(10);
   data[0] = EvoreInstruction.MMClaimSOL;
@@ -328,6 +329,7 @@ function mmClaimSolInstruction(signer, manager, authId = 0n) {
       { pubkey: signer, isSigner: true, isWritable: true },
       { pubkey: manager, isSigner: false, isWritable: true },
       { pubkey: managedMinerAuth, isSigner: false, isWritable: true },
+      { pubkey: oreBoard, isSigner: false, isWritable: true },
       { pubkey: oreMiner, isSigner: false, isWritable: true },
       { pubkey: SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: ORE_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -347,6 +349,7 @@ function mmClaimSolInstruction(signer, manager, authId = 0n) {
 function mmClaimOreInstruction(signer, manager, authId = 0n) {
   const [managedMinerAuth, bump] = getManagedMinerAuthPda(manager, authId);
   const [oreMiner] = getOreMinerPda(managedMinerAuth);
+  const [oreBoard] = getOreBoardPda();
   const [treasury] = getOreTreasuryPda();
   const treasuryTokens = getOreTokenAddress(treasury);
   const recipientTokens = getOreTokenAddress(managedMinerAuth);
@@ -363,6 +366,7 @@ function mmClaimOreInstruction(signer, manager, authId = 0n) {
       { pubkey: signer, isSigner: true, isWritable: true },
       { pubkey: manager, isSigner: false, isWritable: true },
       { pubkey: managedMinerAuth, isSigner: false, isWritable: true },
+      { pubkey: oreBoard, isSigner: false, isWritable: true },
       { pubkey: oreMiner, isSigner: false, isWritable: true },
       { pubkey: ORE_MINT_ADDRESS, isSigner: false, isWritable: true },
       { pubkey: recipientTokens, isSigner: false, isWritable: true },
@@ -639,6 +643,7 @@ function recycleSolInstruction(signer, manager, authId) {
   const [managedMinerAuth] = getManagedMinerAuthPda(manager, authId);
   const [oreMiner] = getOreMinerPda(managedMinerAuth);
   const [deployerPda] = getDeployerPda(manager);
+  const [oreBoard] = getOreBoardPda();
 
   const data = Buffer.alloc(9);
   data[0] = EvoreInstruction.RecycleSol;
@@ -652,7 +657,9 @@ function recycleSolInstruction(signer, manager, authId) {
       { pubkey: deployerPda, isSigner: false, isWritable: true },     // 2: deployer PDA
       { pubkey: managedMinerAuth, isSigner: false, isWritable: true }, // 3: managed_miner_auth
       { pubkey: oreMiner, isSigner: false, isWritable: true },        // 4: ore_miner
-      { pubkey: ORE_PROGRAM_ID, isSigner: false, isWritable: false }, // 5: ore_program
+      { pubkey: oreBoard, isSigner: false, isWritable: true },        // 5: board
+      { pubkey: SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false }, // 6: system_program
+      { pubkey: ORE_PROGRAM_ID, isSigner: false, isWritable: false }, // 7: ore_program
     ],
     data,
   });
@@ -1147,6 +1154,7 @@ function recycleStratSolInstruction(signer, manager, authId) {
   const [stratDeployerPda] = getStrategyDeployerPda(manager);
   const [managedMinerAuth] = getManagedMinerAuthPda(manager, authId);
   const [oreMiner] = getOreMinerPda(managedMinerAuth);
+  const [oreBoard] = getOreBoardPda();
 
   const data = Buffer.alloc(9);
   data[0] = EvoreInstruction.RecycleStratSol;
@@ -1160,6 +1168,7 @@ function recycleStratSolInstruction(signer, manager, authId) {
       { pubkey: stratDeployerPda, isSigner: false, isWritable: true },
       { pubkey: managedMinerAuth, isSigner: false, isWritable: true },
       { pubkey: oreMiner, isSigner: false, isWritable: true },
+      { pubkey: oreBoard, isSigner: false, isWritable: true },
       { pubkey: ORE_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
