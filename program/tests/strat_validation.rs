@@ -1,7 +1,7 @@
 mod strat_common;
 
-use evore::state::{StrategyDeployer, strategy_deployer_pda};
-use evore::validation::{StrategyType, validate_strategy_data};
+use evore::state::{strategy_deployer_pda, StrategyDeployer};
+use evore::validation::{validate_strategy_data, StrategyType};
 use solana_sdk::pubkey::Pubkey;
 
 // ============================================================================
@@ -36,7 +36,10 @@ fn test_strategy_deployer_pda_differs_per_manager() {
     let manager_b = Pubkey::new_unique();
     let (pda_a, _) = strategy_deployer_pda(manager_a);
     let (pda_b, _) = strategy_deployer_pda(manager_b);
-    assert_ne!(pda_a, pda_b, "Different managers must produce different PDAs");
+    assert_ne!(
+        pda_a, pda_b,
+        "Different managers must produce different PDAs"
+    );
 }
 
 #[test]
@@ -50,7 +53,10 @@ fn test_strategy_deployer_pda_uses_correct_seeds() {
     )
     .unwrap();
 
-    assert_eq!(pda, expected, "PDA must use seeds [\"strategy-deployer\", manager_key]");
+    assert_eq!(
+        pda, expected,
+        "PDA must use seeds [\"strategy-deployer\", manager_key]"
+    );
 }
 
 // ============================================================================
@@ -63,7 +69,10 @@ fn test_strategy_type_from_u8() {
     assert_eq!(StrategyType::try_from(1).unwrap(), StrategyType::Percentage);
     assert_eq!(StrategyType::try_from(2).unwrap(), StrategyType::Manual);
     assert_eq!(StrategyType::try_from(3).unwrap(), StrategyType::Split);
-    assert_eq!(StrategyType::try_from(4).unwrap(), StrategyType::DynamicSplitPercentage);
+    assert_eq!(
+        StrategyType::try_from(4).unwrap(),
+        StrategyType::DynamicSplitPercentage
+    );
     assert_eq!(StrategyType::try_from(5).unwrap(), StrategyType::DynamicEv);
 }
 

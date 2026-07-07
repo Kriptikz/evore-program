@@ -153,7 +153,7 @@ async fn process_batch(
             0,                         // bps_fee (we set actual bps fee to 0)
             REQUIRED_FLAT_FEE,         // flat_fee (we set actual flat fee)
             deployer.expected_bps_fee, // Keep user's expected_bps_fee
-            deployer.expected_flat_fee,// Keep user's expected_flat_fee
+            deployer.expected_flat_fee, // Keep user's expected_flat_fee
             deployer.max_per_round,    // Keep current max_per_round
         );
         instructions.push(ix);
@@ -185,10 +185,7 @@ async fn process_batch(
     let versioned_tx = match solana_sdk::transaction::VersionedTransaction::try_from(tx) {
         Ok(vtx) => vtx,
         Err(e) => {
-            error!(
-                "[FeeUpdater] Failed to convert transaction: {}",
-                e
-            );
+            error!("[FeeUpdater] Failed to convert transaction: {}", e);
             return;
         }
     };
@@ -201,10 +198,7 @@ async fn process_batch(
 
     // Send to transaction processor
     if let Err(e) = senders.to_tx_processor.send(batched_tx).await {
-        error!(
-            "[FeeUpdater] Failed to send to tx processor: {}",
-            e
-        );
+        error!("[FeeUpdater] Failed to send to tx processor: {}", e);
     }
 
     shared.stats.increment(&shared.stats.fee_updates_sent);
@@ -213,4 +207,3 @@ async fn process_batch(
         batch_size
     );
 }
-

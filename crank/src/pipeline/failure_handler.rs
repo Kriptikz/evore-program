@@ -43,7 +43,7 @@ pub async fn run(
     while let Some(failed_batch) = rx.recv().await {
         handled_count += 1;
         let batch_size = failed_batch.miners.len();
-        
+
         info!(
             "[FailureHandler] Handling failed {} batch: {} ({} miners) | error: {:?}",
             failed_batch.tx_type, failed_batch.signature, batch_size, failed_batch.error
@@ -51,14 +51,16 @@ pub async fn run(
 
         // Try to identify which miner caused the failure
         let problematic_index = identify_problematic_miner(&failed_batch);
-        
+
         match problematic_index {
             Some(idx) if batch_size > 1 => {
                 // We identified a specific miner as problematic
                 let problematic_miner = &failed_batch.miners[idx];
                 warn!(
                     "[FailureHandler] Identified problematic miner at index {}: {} (manager: {})",
-                    idx, problematic_miner.miner_address, problematic_miner.manager()
+                    idx,
+                    problematic_miner.miner_address,
+                    problematic_miner.manager()
                 );
 
                 // Refresh the problematic miner's cache
@@ -73,7 +75,10 @@ pub async fn run(
                             refreshed_count += 1;
                         }
                         Ok(None) => {
-                            warn!("[FailureHandler] Miner not in cache: {}", problematic_miner.miner_address);
+                            warn!(
+                                "[FailureHandler] Miner not in cache: {}",
+                                problematic_miner.miner_address
+                            );
                         }
                         Err(e) => {
                             error!("[FailureHandler] Failed to refresh miner: {}", e);
@@ -126,7 +131,10 @@ pub async fn run(
                     {
                         let mut cache = shared.miner_cache.write().await;
                         if let Err(e) = cache.refresh_single(&rpc_client, &miner.miner_address) {
-                            error!("[FailureHandler] Failed to refresh miner {}: {}", miner.miner_address, e);
+                            error!(
+                                "[FailureHandler] Failed to refresh miner {}: {}",
+                                miner.miner_address, e
+                            );
                         } else {
                             refreshed_count += 1;
                         }
@@ -175,7 +183,7 @@ fn identify_problematic_miner(failed_batch: &FailedBatch) -> Option<usize> {
         // For deploy batches, each miner typically gets multiple instructions
         // Try to map instruction index to miner index
         let miners_count = failed_batch.miners.len();
-        
+
         match failed_batch.tx_type {
             TxType::Deploy => {
                 // Deploy transactions have compute budget (2 ixs) + deploy ix per miner
@@ -236,7 +244,9 @@ fn extract_instruction_index(error_msg: &str) -> Option<u32> {
     // Pattern 2: "instruction X failed"
     if let Some(start) = error_msg.find("instruction ") {
         let rest = &error_msg[start + 12..];
-        let num_end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+        let num_end = rest
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(rest.len());
         if num_end > 0 {
             if let Ok(idx) = rest[..num_end].parse::<u32>() {
                 return Some(idx);
@@ -255,4 +265,3 @@ fn extract_instruction_index(error_msg: &str) -> Option<u32> {
 
     None
 }
-

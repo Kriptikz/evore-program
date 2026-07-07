@@ -3,7 +3,6 @@ use steel::*;
 
 pub const PROGRAM_ID: Pubkey = pubkey!("3jSkUuYBoJzQPMEzTvkDFXCZUBksPamrVhrnHR9igu2X");
 
-
 /// Seed of the var account PDA.
 pub const VAR: &[u8] = b"var";
 
@@ -80,7 +79,6 @@ pub enum EntropyAccount {
     Var = 0,
 }
 
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable)]
 pub struct Var {
@@ -120,34 +118,33 @@ pub struct Var {
 
 account!(EntropyAccount, Var);
 
-
 pub fn next(signer: Pubkey, var: Pubkey, end_at: u64) -> Instruction {
-  Instruction {
-      program_id: PROGRAM_ID,
-      accounts: vec![AccountMeta::new(signer, true), AccountMeta::new(var, false)],
-      data: Next {
-          end_at: end_at.to_le_bytes(),
-      }
-      .to_bytes(),
-  }
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![AccountMeta::new(signer, true), AccountMeta::new(var, false)],
+        data: Next {
+            end_at: end_at.to_le_bytes(),
+        }
+        .to_bytes(),
+    }
 }
 
 pub fn reveal(signer: Pubkey, var: Pubkey, seed: [u8; 32]) -> Instruction {
-  Instruction {
-      program_id: PROGRAM_ID,
-      accounts: vec![AccountMeta::new(signer, true), AccountMeta::new(var, false)],
-      data: Reveal { seed }.to_bytes(),
-  }
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![AccountMeta::new(signer, true), AccountMeta::new(var, false)],
+        data: Reveal { seed }.to_bytes(),
+    }
 }
 
 pub fn sample(signer: Pubkey, var: Pubkey) -> Instruction {
-  Instruction {
-      program_id: PROGRAM_ID,
-      accounts: vec![
-          AccountMeta::new(signer, true),
-          AccountMeta::new(var, false),
-          AccountMeta::new_readonly(sysvar::slot_hashes::ID, false),
-      ],
-      data: Sample {}.to_bytes(),
-  }
+    Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(var, false),
+            AccountMeta::new_readonly(sysvar::slot_hashes::ID, false),
+        ],
+        data: Sample {}.to_bytes(),
+    }
 }

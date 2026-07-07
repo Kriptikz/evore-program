@@ -59,12 +59,7 @@ pub async fn run(
         }
 
         // Create pending confirmation
-        let pending = PendingConfirmation::new(
-            signature,
-            batched_tx.miners,
-            tx_type,
-            round_id,
-        );
+        let pending = PendingConfirmation::new(signature, batched_tx.miners, tx_type, round_id);
 
         // Send to confirmation system
         if let Err(e) = senders.to_confirmation.send(pending).await {
@@ -75,10 +70,7 @@ pub async fn run(
 
         // Log progress periodically
         if processed_count % 10 == 0 {
-            info!(
-                "[TxProcessor] Processed {} transactions",
-                processed_count
-            );
+            info!("[TxProcessor] Processed {} transactions", processed_count);
         }
     }
 
@@ -87,4 +79,3 @@ pub async fn run(
         processed_count
     );
 }
-

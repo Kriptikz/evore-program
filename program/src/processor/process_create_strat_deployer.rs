@@ -1,6 +1,4 @@
-use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, system_program,
-};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, system_program};
 use steel::*;
 
 use crate::{
@@ -8,7 +6,7 @@ use crate::{
     error::EvoreError,
     instruction::CreateStratDeployer,
     state::{EvoreAccount, Manager, StrategyDeployer},
-    validation::{StrategyType, validate_strategy_data},
+    validation::{validate_strategy_data, StrategyType},
 };
 
 pub fn process_create_strat_deployer(
@@ -22,13 +20,9 @@ pub fn process_create_strat_deployer(
     let strategy_type_raw = args.strategy_type;
     let strategy_data = args.strategy_data;
 
-    let [
-        signer,
-        manager_account_info,
-        strat_deployer_account_info,
-        deploy_authority_info,
-        system_program_info,
-    ] = accounts else {
+    let [signer, manager_account_info, strat_deployer_account_info, deploy_authority_info, system_program_info] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -78,8 +72,16 @@ pub fn process_create_strat_deployer(
             account_size as u64,
             &crate::id(),
         ),
-        &[signer.clone(), strat_deployer_account_info.clone(), system_program_info.clone()],
-        &[&[STRATEGY_DEPLOYER, manager_account_info.key.as_ref(), &[strat_deployer_bump]]],
+        &[
+            signer.clone(),
+            strat_deployer_account_info.clone(),
+            system_program_info.clone(),
+        ],
+        &[&[
+            STRATEGY_DEPLOYER,
+            manager_account_info.key.as_ref(),
+            &[strat_deployer_bump],
+        ]],
     )?;
 
     let strat_deployer = StrategyDeployer {

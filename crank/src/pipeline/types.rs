@@ -2,11 +2,7 @@
 //!
 //! These types are passed through channels between pipeline systems.
 
-use solana_sdk::{
-    pubkey::Pubkey,
-    signature::Signature,
-    transaction::VersionedTransaction,
-};
+use solana_sdk::{pubkey::Pubkey, signature::Signature, transaction::VersionedTransaction};
 use std::time::Instant;
 
 use crate::config::DeployerInfo;
@@ -241,4 +237,3 @@ pub struct FailedBatch {
     /// Error message if available
     pub error: Option<String>,
 }
-

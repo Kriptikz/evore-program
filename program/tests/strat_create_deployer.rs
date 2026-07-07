@@ -2,9 +2,9 @@ mod strat_common;
 
 use strat_common::*;
 
-use evore::state::{strategy_deployer_pda, StrategyDeployer};
 use evore::instruction::create_strat_deployer;
-use solana_sdk::{signature::Keypair, signer::Signer, pubkey::Pubkey};
+use evore::state::{strategy_deployer_pda, StrategyDeployer};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 // ============================================================================
 // Happy path: Create with Manual strategy
@@ -29,21 +29,21 @@ async fn test_create_manual_strategy_succeeds() {
         authority.pubkey(),
         manager.pubkey(),
         deploy_authority.pubkey(),
-        100,  // bps_fee
-        50,   // flat_fee
+        100,           // bps_fee
+        50,            // flat_fee
         1_000_000_000, // max_per_round
-        2,    // Manual strategy
+        2,             // Manual strategy
         strategy_data,
     );
 
     let payer = context.payer.insecure_clone();
-    let result = send_transaction(
-        &mut context,
-        &[ix],
-        &[&payer, &authority],
-    ).await;
+    let result = send_transaction(&mut context, &[ix], &[&payer, &authority]).await;
 
-    assert!(result.is_ok(), "CreateStratDeployer should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "CreateStratDeployer should succeed: {:?}",
+        result.err()
+    );
 
     let state = get_strat_deployer_state(&mut context.banks_client, strat_deployer_pda).await;
     assert_eq!(state.manager_key, manager.pubkey());
@@ -87,13 +87,13 @@ async fn test_create_ev_strategy_succeeds() {
     );
 
     let payer = context.payer.insecure_clone();
-    let result = send_transaction(
-        &mut context,
-        &[ix],
-        &[&payer, &authority],
-    ).await;
+    let result = send_transaction(&mut context, &[ix], &[&payer, &authority]).await;
 
-    assert!(result.is_ok(), "CreateStratDeployer with EV should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "CreateStratDeployer with EV should succeed: {:?}",
+        result.err()
+    );
 
     let (strat_deployer_pda, _) = strategy_deployer_pda(manager.pubkey());
     let state = get_strat_deployer_state(&mut context.banks_client, strat_deployer_pda).await;
@@ -121,8 +121,11 @@ async fn test_create_duplicate_fails() {
         authority.pubkey(),
         manager.pubkey(),
         deploy_authority.pubkey(),
-        0, 0, 1_000_000_000,
-        2, manual_strategy_data(),
+        0,
+        0,
+        1_000_000_000,
+        2,
+        manual_strategy_data(),
     );
 
     // First create succeeds
@@ -159,8 +162,11 @@ async fn test_create_wrong_authority_fails() {
         wrong_authority.pubkey(),
         manager.pubkey(),
         deploy_authority.pubkey(),
-        0, 0, 1_000_000_000,
-        2, manual_strategy_data(),
+        0,
+        0,
+        1_000_000_000,
+        2,
+        manual_strategy_data(),
     );
 
     let payer = context.payer.insecure_clone();
@@ -190,7 +196,9 @@ async fn test_create_invalid_strategy_data_fails() {
         authority.pubkey(),
         manager.pubkey(),
         deploy_authority.pubkey(),
-        0, 0, 1_000_000_000,
+        0,
+        0,
+        1_000_000_000,
         0, // EV strategy
         bad_ev_data,
     );

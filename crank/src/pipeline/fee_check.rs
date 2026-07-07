@@ -41,7 +41,9 @@ pub async fn run(
                 deployer.expected_flat_fee,
                 REQUIRED_FLAT_FEE
             );
-            shared.stats.increment(&shared.stats.miners_skipped_wrong_fee);
+            shared
+                .stats
+                .increment(&shared.stats.miners_skipped_wrong_fee);
             skipped_count += 1;
             continue;
         }
@@ -82,4 +84,3 @@ pub async fn run(
         ok_count, need_update_count, skipped_count
     );
 }
-

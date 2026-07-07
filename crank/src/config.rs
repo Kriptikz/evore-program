@@ -12,27 +12,31 @@ pub struct Config {
     /// Subcommand to run
     #[command(subcommand)]
     pub command: Option<Command>,
-    
+
     /// RPC URL
-    #[arg(long, env = "RPC_URL", default_value = "https://api.mainnet-beta.solana.com")]
+    #[arg(
+        long,
+        env = "RPC_URL",
+        default_value = "https://api.mainnet-beta.solana.com"
+    )]
     pub rpc_url: String,
-    
+
     /// Deploy authority keypair path
     #[arg(long, env = "DEPLOY_AUTHORITY_KEYPAIR")]
     pub keypair_path: PathBuf,
-    
+
     /// Database path
     #[arg(long, env = "DATABASE_PATH", default_value = "crank.db")]
     pub db_path: PathBuf,
-    
+
     /// Priority fee in microlamports per compute unit
     #[arg(long, env = "PRIORITY_FEE", default_value = "100000")]
     pub priority_fee: u64,
-    
+
     /// Poll interval in milliseconds
     #[arg(long, env = "POLL_INTERVAL_MS", default_value = "400")]
     pub poll_interval_ms: u64,
-    
+
     /// [LEGACY] Address Lookup Table for manual LUT commands (show-lut, deactivate-lut, close-lut)
     /// Not needed for 'run' - the crank auto-discovers and creates LUTs as needed
     #[arg(long, env = "LUT_ADDRESS")]

@@ -1,6 +1,4 @@
-use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey,
-};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use steel::*;
 
 use crate::{
@@ -21,13 +19,9 @@ pub fn process_update_deployer(
     let new_expected_flat_fee = u64::from_le_bytes(args.expected_flat_fee);
     let new_max_per_round = u64::from_le_bytes(args.max_per_round);
 
-    let [
-        signer,
-        manager_account_info,
-        deployer_account_info,
-        new_deploy_authority_info,
-        _system_program_info,
-    ] = accounts else {
+    let [signer, manager_account_info, deployer_account_info, new_deploy_authority_info, _system_program_info] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -49,10 +43,8 @@ pub fn process_update_deployer(
     }
 
     // Verify deployer PDA
-    let (deployer_pda, _deployer_bump) = Pubkey::find_program_address(
-        &[DEPLOYER, manager_account_info.key.as_ref()],
-        &crate::id(),
-    );
+    let (deployer_pda, _deployer_bump) =
+        Pubkey::find_program_address(&[DEPLOYER, manager_account_info.key.as_ref()], &crate::id());
 
     if deployer_pda != *deployer_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -72,7 +64,7 @@ pub fn process_update_deployer(
 
     // Update deployer data
     let mut data = deployer_account_info.try_borrow_mut_data()?;
-    
+
     if is_manager_authority {
         // Manager can update: deploy_authority, expected_bps_fee, expected_flat_fee, max_per_round
         // These are the maximum fees the manager is willing to accept
@@ -85,7 +77,7 @@ pub fn process_update_deployer(
         // max_per_round at offset 104
         data[104..112].copy_from_slice(&new_max_per_round.to_le_bytes());
     }
-    
+
     if is_deploy_authority {
         // Deploy authority can update: deploy_authority, bps_fee, flat_fee
         // These are the actual fees charged (must be <= expected fees for autodeploys)

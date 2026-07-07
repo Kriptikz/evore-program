@@ -7,4 +7,3 @@ pub const STRATEGY_DEPLOYER: &[u8] = b"strategy-deployer";
 pub const FEE_COLLECTOR: Pubkey = pubkey!("56qSi79jWdM1zie17NKFvdsh213wPb15HHUqGUjmJ2Lr");
 
 pub const DEPLOY_FEE: u64 = 0_000_001_000;
-

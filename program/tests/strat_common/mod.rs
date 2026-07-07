@@ -2,16 +2,18 @@ use evore::{
     consts::FEE_COLLECTOR,
     entropy_api::{self, var_pda, Var},
     ore_api::{
-        self, board_pda, config_pda, miner_pda, round_pda,
-        Board, Miner, Round, MINT_ADDRESS, TREASURY_ADDRESS,
+        self, board_pda, config_pda, miner_pda, round_pda, Board, Miner, Round, MINT_ADDRESS,
+        TREASURY_ADDRESS,
     },
-    state::{managed_miner_auth_pda, EvoreAccount, Manager, StrategyDeployer, strategy_deployer_pda},
+    state::{
+        managed_miner_auth_pda, strategy_deployer_pda, EvoreAccount, Manager, StrategyDeployer,
+    },
 };
 use solana_program::rent::Rent;
 use solana_program_test::{processor, read_file, ProgramTest};
 use solana_sdk::{
-    account::Account, compute_budget::ComputeBudgetInstruction,
-    pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction,
+    account::Account, compute_budget::ComputeBudgetInstruction, pubkey::Pubkey, signature::Keypair,
+    signer::Signer, transaction::Transaction,
 };
 use steel::{AccountDeserialize, Numeric};
 
@@ -22,11 +24,8 @@ pub const TEST_ROUND_ID: u64 = 70149;
 // ============================================================================
 
 pub fn setup_programs() -> ProgramTest {
-    let mut program_test = ProgramTest::new(
-        "evore",
-        evore::id(),
-        processor!(evore::process_instruction),
-    );
+    let mut program_test =
+        ProgramTest::new("evore", evore::id(), processor!(evore::process_instruction));
 
     let data = read_file(&"tests/buffers/oreV3.so");
     program_test.add_account(
@@ -277,11 +276,7 @@ pub fn add_ore_miner_account(
     );
 }
 
-pub fn add_entropy_var_account(
-    program_test: &mut ProgramTest,
-    board_address: Pubkey,
-    end_at: u64,
-) {
+pub fn add_entropy_var_account(program_test: &mut ProgramTest, board_address: Pubkey, end_at: u64) {
     let var = Var {
         authority: board_address,
         id: 0,
@@ -399,7 +394,13 @@ pub fn setup_strat_deploy_test_accounts(
     deployed[9] = 200_000_000;
     deployed[10] = 100_000_000;
     let total_deployed: u64 = deployed.iter().sum();
-    add_round_account(program_test, round_id, deployed, total_deployed, end_slot + 1000);
+    add_round_account(
+        program_test,
+        round_id,
+        deployed,
+        total_deployed,
+        end_slot + 1000,
+    );
 
     add_entropy_var_account(program_test, board_pda().0, end_slot);
     add_treasury_account(program_test);
@@ -414,7 +415,12 @@ pub fn setup_strat_deploy_test_accounts(
 // Strategy Data Builders
 // ============================================================================
 
-pub fn ev_strategy_data(max_per_square: u64, min_bet: u64, slots_left: u64, ore_value: u64) -> [u8; 64] {
+pub fn ev_strategy_data(
+    max_per_square: u64,
+    min_bet: u64,
+    slots_left: u64,
+    ore_value: u64,
+) -> [u8; 64] {
     let mut d = [0u8; 64];
     d[0..8].copy_from_slice(&max_per_square.to_le_bytes());
     d[8..16].copy_from_slice(&min_bet.to_le_bytes());
@@ -423,7 +429,12 @@ pub fn ev_strategy_data(max_per_square: u64, min_bet: u64, slots_left: u64, ore_
     d
 }
 
-pub fn percentage_strategy_data(percentage: u64, squares_count: u64, motherlode_min: u64, motherlode_max: u64) -> [u8; 64] {
+pub fn percentage_strategy_data(
+    percentage: u64,
+    squares_count: u64,
+    motherlode_min: u64,
+    motherlode_max: u64,
+) -> [u8; 64] {
     let mut d = [0u8; 64];
     d[0..8].copy_from_slice(&percentage.to_le_bytes());
     d[8..16].copy_from_slice(&squares_count.to_le_bytes());
@@ -443,7 +454,12 @@ pub fn split_strategy_data(motherlode_min: u64, motherlode_max: u64) -> [u8; 64]
     d
 }
 
-pub fn dsp_strategy_data(percentage: u64, squares_mask: u64, motherlode_min: u64, motherlode_max: u64) -> [u8; 64] {
+pub fn dsp_strategy_data(
+    percentage: u64,
+    squares_mask: u64,
+    motherlode_min: u64,
+    motherlode_max: u64,
+) -> [u8; 64] {
     let mut d = [0u8; 64];
     d[0..8].copy_from_slice(&percentage.to_le_bytes());
     d[8..16].copy_from_slice(&squares_mask.to_le_bytes());
@@ -452,7 +468,12 @@ pub fn dsp_strategy_data(percentage: u64, squares_mask: u64, motherlode_min: u64
     d
 }
 
-pub fn dynev_strategy_data(max_per_square: u64, min_bet: u64, slots_left: u64, max_ore_value: u64) -> [u8; 64] {
+pub fn dynev_strategy_data(
+    max_per_square: u64,
+    min_bet: u64,
+    slots_left: u64,
+    max_ore_value: u64,
+) -> [u8; 64] {
     let mut d = [0u8; 64];
     d[0..8].copy_from_slice(&max_per_square.to_le_bytes());
     d[8..16].copy_from_slice(&min_bet.to_le_bytes());
@@ -482,9 +503,7 @@ pub async fn send_transaction(
     instructions: &[solana_program::instruction::Instruction],
     signers: &[&Keypair],
 ) -> Result<(), solana_program_test::BanksClientError> {
-    let mut all_ixs = vec![
-        ComputeBudgetInstruction::set_compute_unit_limit(400_000),
-    ];
+    let mut all_ixs = vec![ComputeBudgetInstruction::set_compute_unit_limit(400_000)];
     all_ixs.extend_from_slice(instructions);
 
     let tx = Transaction::new_signed_with_payer(

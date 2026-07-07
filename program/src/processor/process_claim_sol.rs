@@ -1,10 +1,11 @@
-use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey,
-};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use steel::*;
 
 use crate::{
-    error::EvoreError, instruction::MMClaimSOL, ore_api::{self}, state::Manager
+    error::EvoreError,
+    instruction::MMClaimSOL,
+    ore_api::{self},
+    state::Manager,
 };
 
 pub fn process_claim_sol(
@@ -14,15 +15,9 @@ pub fn process_claim_sol(
     let args = MMClaimSOL::try_from_bytes(instruction_data)?;
     let auth_id = u64::from_le_bytes(args.auth_id);
 
-    let [
-            signer,
-            manager_account_info,
-            managed_miner_auth_account_info,
-            board_account_info,
-            ore_miner_account_info,
-            system_program,
-            ore_program,
-    ] = accounts else {
+    let [signer, manager_account_info, managed_miner_auth_account_info, board_account_info, ore_miner_account_info, system_program, ore_program] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -54,8 +49,7 @@ pub fn process_claim_sol(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let manager = manager_account_info
-        .as_account::<Manager>(&crate::id())?;
+    let manager = manager_account_info.as_account::<Manager>(&crate::id())?;
 
     if manager.authority != *signer.key {
         return Err(EvoreError::NotAuthorized.into());
@@ -70,7 +64,8 @@ pub fn process_claim_sol(
             &[args.bump],
         ],
         &crate::id(),
-    ).map_err(|_| EvoreError::InvalidPDA)?;
+    )
+    .map_err(|_| EvoreError::InvalidPDA)?;
 
     if managed_miner_auth_pda != *managed_miner_auth_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -86,9 +81,7 @@ pub fn process_claim_sol(
     let managed_miner_auth_key = claim_sol_accounts[0].key.clone();
 
     solana_program::program::invoke_signed(
-        &ore_api::claim_sol(
-            managed_miner_auth_key,
-        ),
+        &ore_api::claim_sol(managed_miner_auth_key),
         &claim_sol_accounts,
         &[&[
             crate::consts::MANAGED_MINER_AUTH,
@@ -98,13 +91,11 @@ pub fn process_claim_sol(
         ]],
     )?;
 
-
-    let transfer_accounts = 
-        vec![
-            managed_miner_auth_account_info.clone(),
-            signer.clone(),
-            system_program.clone(),
-        ];
+    let transfer_accounts = vec![
+        managed_miner_auth_account_info.clone(),
+        signer.clone(),
+        system_program.clone(),
+    ];
     solana_program::program::invoke_signed(
         &solana_program::system_instruction::transfer(
             managed_miner_auth_account_info.key,

@@ -2,9 +2,9 @@ mod strat_common;
 
 use strat_common::*;
 
-use evore::state::{strategy_deployer_pda, StrategyDeployer};
 use evore::instruction::{create_strat_deployer, update_strat_deployer};
-use solana_sdk::{signature::Keypair, signer::Signer, pubkey::Pubkey};
+use evore::state::{strategy_deployer_pda, StrategyDeployer};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 // ============================================================================
 // Helper: create a strat deployer then return the context for update tests
@@ -18,10 +18,10 @@ async fn setup_with_strat_deployer(
     strategy_data: [u8; 64],
 ) -> (
     solana_program_test::ProgramTestContext,
-    Keypair,  // authority (manager authority)
-    Pubkey,   // manager pubkey
-    Keypair,  // deploy_authority
-    Pubkey,   // strat_deployer PDA
+    Keypair, // authority (manager authority)
+    Pubkey,  // manager pubkey
+    Keypair, // deploy_authority
+    Pubkey,  // strat_deployer PDA
 ) {
     let mut program_test = setup_programs();
     let manager = Keypair::new();
@@ -35,13 +35,18 @@ async fn setup_with_strat_deployer(
     let (strat_deployer_pda_addr, _) = strategy_deployer_pda(manager.pubkey());
 
     let fund_ix = solana_sdk::system_instruction::transfer(
-        &payer.pubkey(), &authority.pubkey(), 1_000_000_000,
+        &payer.pubkey(),
+        &authority.pubkey(),
+        1_000_000_000,
     );
     let fund_ix2 = solana_sdk::system_instruction::transfer(
-        &payer.pubkey(), &deploy_authority.pubkey(), 1_000_000_000,
+        &payer.pubkey(),
+        &deploy_authority.pubkey(),
+        1_000_000_000,
     );
     send_transaction(&mut context, &[fund_ix, fund_ix2], &[&payer])
-        .await.unwrap();
+        .await
+        .unwrap();
 
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -57,11 +62,18 @@ async fn setup_with_strat_deployer(
     );
 
     send_transaction(&mut context, &[ix], &[&payer, &authority])
-        .await.unwrap();
+        .await
+        .unwrap();
 
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    (context, authority, manager.pubkey(), deploy_authority, strat_deployer_pda_addr)
+    (
+        context,
+        authority,
+        manager.pubkey(),
+        deploy_authority,
+        strat_deployer_pda_addr,
+    )
 }
 
 // ============================================================================
@@ -78,17 +90,18 @@ async fn test_manager_updates_expected_bps_fee() {
         authority.pubkey(),
         manager,
         deploy_authority.pubkey(),
-        100,   // bps_fee (unchanged, manager can't set this)
-        50,    // flat_fee (unchanged)
-        200,   // new expected_bps_fee
-        100,   // new expected_flat_fee
-        2_000_000_000,  // new max_per_round
-        2,     // strategy_type unchanged
+        100,           // bps_fee (unchanged, manager can't set this)
+        50,            // flat_fee (unchanged)
+        200,           // new expected_bps_fee
+        100,           // new expected_flat_fee
+        2_000_000_000, // new max_per_round
+        2,             // strategy_type unchanged
         manual_strategy_data(),
     );
 
     send_transaction(&mut context, &[ix], &[&payer, &authority])
-        .await.unwrap();
+        .await
+        .unwrap();
 
     let state = get_strat_deployer_state(&mut context.banks_client, strat_pda).await;
     assert_eq!(state.expected_bps_fee, 200);
@@ -110,17 +123,18 @@ async fn test_deploy_authority_updates_bps_fee() {
         deploy_authority.pubkey(),
         manager,
         deploy_authority.pubkey(),
-        50,    // new bps_fee (lowered from 100)
-        25,    // new flat_fee (lowered from 50)
-        100,   // expected_bps_fee (deploy_authority can't change)
-        50,    // expected_flat_fee (deploy_authority can't change)
+        50,  // new bps_fee (lowered from 100)
+        25,  // new flat_fee (lowered from 50)
+        100, // expected_bps_fee (deploy_authority can't change)
+        50,  // expected_flat_fee (deploy_authority can't change)
         1_000_000_000,
         2,
         manual_strategy_data(),
     );
 
     send_transaction(&mut context, &[ix], &[&payer, &deploy_authority])
-        .await.unwrap();
+        .await
+        .unwrap();
 
     let state = get_strat_deployer_state(&mut context.banks_client, strat_pda).await;
     assert_eq!(state.bps_fee, 50);
@@ -146,14 +160,18 @@ async fn test_manager_updates_strategy_to_ev() {
         authority.pubkey(),
         manager,
         deploy_authority.pubkey(),
-        0, 0, 0, 0,
+        0,
+        0,
+        0,
+        0,
         1_000_000_000,
-        0,  // EV strategy
+        0, // EV strategy
         new_strategy_data,
     );
 
     send_transaction(&mut context, &[ix], &[&payer, &authority])
-        .await.unwrap();
+        .await
+        .unwrap();
 
     let state = get_strat_deployer_state(&mut context.banks_client, strat_pda).await;
     assert_eq!(state.strategy_type, 0);
@@ -176,14 +194,20 @@ async fn test_update_invalid_strategy_data_fails() {
         authority.pubkey(),
         manager,
         deploy_authority.pubkey(),
-        0, 0, 0, 0,
+        0,
+        0,
+        0,
+        0,
         1_000_000_000,
-        0,  // EV
+        0, // EV
         bad_data,
     );
 
     let result = send_transaction(&mut context, &[ix], &[&payer, &authority]).await;
-    assert!(result.is_err(), "Invalid strategy data must be rejected on update");
+    assert!(
+        result.is_err(),
+        "Invalid strategy data must be rejected on update"
+    );
 }
 
 // ============================================================================
@@ -198,10 +222,13 @@ async fn test_update_wrong_authority_fails() {
 
     let wrong_signer = Keypair::new();
     let fund_ix = solana_sdk::system_instruction::transfer(
-        &payer.pubkey(), &wrong_signer.pubkey(), 1_000_000_000,
+        &payer.pubkey(),
+        &wrong_signer.pubkey(),
+        1_000_000_000,
     );
     send_transaction(&mut context, &[fund_ix], &[&payer])
-        .await.unwrap();
+        .await
+        .unwrap();
 
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
@@ -209,7 +236,10 @@ async fn test_update_wrong_authority_fails() {
         wrong_signer.pubkey(),
         manager,
         wrong_signer.pubkey(),
-        0, 0, 0, 0,
+        0,
+        0,
+        0,
+        0,
         1_000_000_000,
         2,
         manual_strategy_data(),

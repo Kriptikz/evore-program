@@ -45,10 +45,7 @@ pub async fn run(
         // Send the transaction (don't wait for confirmation)
         match sender.send_versioned_rpc(&signed_tx.tx).await {
             Ok(sig) => {
-                info!(
-                    "[TxSender] Sent {} txn: {}",
-                    tx_type, sig
-                );
+                info!("[TxSender] Sent {} txn: {}", tx_type, sig);
                 sent_count += 1;
             }
             Err(e) => {
@@ -64,10 +61,7 @@ pub async fn run(
 
         // Log progress periodically
         if (sent_count + failed_count) % 10 == 0 {
-            info!(
-                "[TxSender] Sent: {}, Failed: {}",
-                sent_count, failed_count
-            );
+            info!("[TxSender] Sent: {}, Failed: {}", sent_count, failed_count);
         }
 
         // Rate limit: wait before sending next transaction
@@ -79,4 +73,3 @@ pub async fn run(
         sent_count, failed_count
     );
 }
-

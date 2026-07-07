@@ -2,9 +2,9 @@ mod strat_common;
 
 use strat_common::*;
 
-use evore::state::{strategy_deployer_pda, managed_miner_auth_pda};
 use evore::instruction::{create_strat_deployer, mm_strat_autodeploy};
-use solana_sdk::{signature::Keypair, signer::Signer, pubkey::Pubkey};
+use evore::state::{managed_miner_auth_pda, strategy_deployer_pda};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 async fn setup_percentage_test(
     percentage: u64,
@@ -31,27 +31,54 @@ async fn setup_percentage_test(
     setup_strat_deploy_test_accounts(&mut program_test, 0, 1, 500);
     add_autodeploy_balance(&mut program_test, mma_pda, 50_000_000_000);
 
-    let strategy_data = percentage_strategy_data(percentage, squares_count, motherlode_min, motherlode_max);
+    let strategy_data =
+        percentage_strategy_data(percentage, squares_count, motherlode_min, motherlode_max);
 
     let mut context = program_test.start_with_context().await;
     let payer = context.payer.insecure_clone();
 
-    let fund_ix = solana_sdk::system_instruction::transfer(&payer.pubkey(), &authority.pubkey(), 2_000_000_000);
-    let fund_ix2 = solana_sdk::system_instruction::transfer(&payer.pubkey(), &deploy_authority.pubkey(), 2_000_000_000);
-    let fund_fc = solana_sdk::system_instruction::transfer(&payer.pubkey(), &evore::consts::FEE_COLLECTOR, 1_000_000_000);
-    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fc], &[&payer]).await.unwrap();
+    let fund_ix = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &authority.pubkey(),
+        2_000_000_000,
+    );
+    let fund_ix2 = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &deploy_authority.pubkey(),
+        2_000_000_000,
+    );
+    let fund_fc = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &evore::consts::FEE_COLLECTOR,
+        1_000_000_000,
+    );
+    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fc], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = create_strat_deployer(
-        authority.pubkey(), manager.pubkey(), deploy_authority.pubkey(),
-        0, 0, 0,
+        authority.pubkey(),
+        manager.pubkey(),
+        deploy_authority.pubkey(),
+        0,
+        0,
+        0,
         1, // Percentage
         strategy_data,
     );
-    send_transaction(&mut context, &[ix], &[&payer, &authority]).await.unwrap();
+    send_transaction(&mut context, &[ix], &[&payer, &authority])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    (context, deploy_authority, manager.pubkey(), mma_pda, auth_id)
+    (
+        context,
+        deploy_authority,
+        manager.pubkey(),
+        mma_pda,
+        auth_id,
+    )
 }
 
 #[tokio::test]
@@ -62,13 +89,14 @@ async fn test_percentage_deploys_to_top_squares() {
 
     let bankroll: u64 = 5_000_000_000;
 
-    let ix = mm_strat_autodeploy(
-        deploy_authority.pubkey(), manager, auth_id,
-        bankroll, 0, 0,
-    );
+    let ix = mm_strat_autodeploy(deploy_authority.pubkey(), manager, auth_id, bankroll, 0, 0);
 
     let result = send_transaction(&mut context, &[ix], &[&payer, &deploy_authority]).await;
-    assert!(result.is_ok(), "Percentage autodeploy should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Percentage autodeploy should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[tokio::test]
@@ -78,11 +106,18 @@ async fn test_percentage_small_bankroll_reduces_pct() {
     let payer = context.payer.insecure_clone();
 
     let ix = mm_strat_autodeploy(
-        deploy_authority.pubkey(), manager, auth_id,
+        deploy_authority.pubkey(),
+        manager,
+        auth_id,
         100_000_000, // small bankroll
-        0, 0,
+        0,
+        0,
     );
 
     let result = send_transaction(&mut context, &[ix], &[&payer, &deploy_authority]).await;
-    assert!(result.is_ok(), "Percentage with small bankroll should still deploy: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Percentage with small bankroll should still deploy: {:?}",
+        result.err()
+    );
 }

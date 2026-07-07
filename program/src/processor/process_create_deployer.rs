@@ -1,6 +1,4 @@
-use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, system_program,
-};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, system_program};
 use steel::*;
 
 use crate::{
@@ -20,13 +18,9 @@ pub fn process_create_deployer(
     let expected_flat_fee = u64::from_le_bytes(args.flat_fee);
     let max_per_round = u64::from_le_bytes(args.max_per_round);
 
-    let [
-        signer,
-        manager_account_info,
-        deployer_account_info,
-        deploy_authority_info,
-        system_program_info,
-    ] = accounts else {
+    let [signer, manager_account_info, deployer_account_info, deploy_authority_info, system_program_info] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -57,10 +51,8 @@ pub fn process_create_deployer(
     }
 
     // Derive and verify deployer PDA
-    let (deployer_pda, deployer_bump) = Pubkey::find_program_address(
-        &[DEPLOYER, manager_account_info.key.as_ref()],
-        &crate::id(),
-    );
+    let (deployer_pda, deployer_bump) =
+        Pubkey::find_program_address(&[DEPLOYER, manager_account_info.key.as_ref()], &crate::id());
 
     if deployer_pda != *deployer_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -81,8 +73,16 @@ pub fn process_create_deployer(
             deployer_size as u64,
             &crate::id(),
         ),
-        &[signer.clone(), deployer_account_info.clone(), system_program_info.clone()],
-        &[&[DEPLOYER, manager_account_info.key.as_ref(), &[deployer_bump]]],
+        &[
+            signer.clone(),
+            deployer_account_info.clone(),
+            system_program_info.clone(),
+        ],
+        &[&[
+            DEPLOYER,
+            manager_account_info.key.as_ref(),
+            &[deployer_bump],
+        ]],
     )?;
 
     // Initialize the deployer data
@@ -90,10 +90,10 @@ pub fn process_create_deployer(
     let deployer = Deployer {
         manager_key: *manager_account_info.key,
         deploy_authority: *deploy_authority_info.key,
-        bps_fee: expected_bps_fee,        // Actual fee starts at expected max
-        flat_fee: expected_flat_fee,       // Actual fee starts at expected max
-        expected_bps_fee,                  // Max bps fee manager accepts
-        expected_flat_fee,                 // Max flat fee manager accepts
+        bps_fee: expected_bps_fee,   // Actual fee starts at expected max
+        flat_fee: expected_flat_fee, // Actual fee starts at expected max
+        expected_bps_fee,            // Max bps fee manager accepts
+        expected_flat_fee,           // Max flat fee manager accepts
         max_per_round,
     };
 

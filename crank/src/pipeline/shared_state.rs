@@ -41,8 +41,14 @@ impl std::fmt::Display for RoundPhase {
             RoundPhase::LateDeploymentWindow { slots_remaining } => {
                 write!(f, "LateDeploymentWindow({} slots)", slots_remaining)
             }
-            RoundPhase::Intermission { slots_into_intermission } => {
-                write!(f, "Intermission({}/{})", slots_into_intermission, INTERMISSION_SLOTS)
+            RoundPhase::Intermission {
+                slots_into_intermission,
+            } => {
+                write!(
+                    f,
+                    "Intermission({}/{})",
+                    slots_into_intermission, INTERMISSION_SLOTS
+                )
             }
             RoundPhase::WaitingForReset => write!(f, "WaitingForReset"),
         }
@@ -84,7 +90,7 @@ impl Default for BoardState {
 
 impl BoardState {
     /// Calculate current phase based on slots
-    /// 
+    ///
     /// Phase progression:
     /// 1. WaitingForFirstDeploy: end_slot == u64::MAX (after reset, before first deploy)
     /// 2. DeploymentWindow: Round active, slots_remaining >= MIN_SLOTS_TO_DEPLOY
@@ -100,7 +106,7 @@ impl BoardState {
         // Round is active (end_slot is valid)
         if self.current_slot < self.end_slot {
             let slots_remaining = self.end_slot.saturating_sub(self.current_slot);
-            
+
             if slots_remaining >= MIN_SLOTS_TO_DEPLOY {
                 RoundPhase::DeploymentWindow { slots_remaining }
             } else {
@@ -110,10 +116,12 @@ impl BoardState {
         } else {
             // Round ended (current_slot >= end_slot)
             let slots_since_end = self.current_slot.saturating_sub(self.end_slot);
-            
+
             if slots_since_end < INTERMISSION_SLOTS {
                 // In 35-slot intermission period
-                RoundPhase::Intermission { slots_into_intermission: slots_since_end }
+                RoundPhase::Intermission {
+                    slots_into_intermission: slots_since_end,
+                }
             } else {
                 // Past intermission, waiting for reset
                 RoundPhase::WaitingForReset
@@ -143,9 +151,9 @@ impl BoardState {
 #[derive(Debug, Default)]
 pub struct PipelineStats {
     // Round timing (ms since UNIX epoch, 0 = not set)
-    pub round_pipeline_start_ms: AtomicU64,        // When first miner was sent to pipeline
+    pub round_pipeline_start_ms: AtomicU64, // When first miner was sent to pipeline
     pub round_last_deploy_confirmed_ms: AtomicU64, // When last deploy txn was confirmed
-    pub miners_sent_to_pipeline: AtomicU64,        // Total miners sent to pipeline this round
+    pub miners_sent_to_pipeline: AtomicU64, // Total miners sent to pipeline this round
 
     // Processing counts
     pub miners_processed: AtomicU64,
@@ -155,10 +163,10 @@ pub struct PipelineStats {
     pub miners_skipped_already_deployed: AtomicU64,
 
     // Miner outcome counts (individual miners, not transactions)
-    pub miners_deployed: AtomicU64,           // Miners successfully deployed
-    pub miners_deploy_failed: AtomicU64,      // Miners whose deploy txn failed
-    pub miners_checkpointed: AtomicU64,       // Miners successfully checkpointed
-    pub miners_checkpoint_failed: AtomicU64,  // Miners whose checkpoint txn failed
+    pub miners_deployed: AtomicU64, // Miners successfully deployed
+    pub miners_deploy_failed: AtomicU64, // Miners whose deploy txn failed
+    pub miners_checkpointed: AtomicU64, // Miners successfully checkpointed
+    pub miners_checkpoint_failed: AtomicU64, // Miners whose checkpoint txn failed
 
     // Deploy transaction stats
     pub deploys_sent: AtomicU64,
@@ -205,12 +213,14 @@ impl PipelineStats {
 
     /// Record when pipeline started processing miners for this round
     pub fn record_pipeline_start(&self) {
-        self.round_pipeline_start_ms.store(Self::now_ms(), Ordering::Relaxed);
+        self.round_pipeline_start_ms
+            .store(Self::now_ms(), Ordering::Relaxed);
     }
 
     /// Record when a deploy was confirmed (updates last confirmed timestamp)
     pub fn record_deploy_confirmed(&self) {
-        self.round_last_deploy_confirmed_ms.store(Self::now_ms(), Ordering::Relaxed);
+        self.round_last_deploy_confirmed_ms
+            .store(Self::now_ms(), Ordering::Relaxed);
     }
 
     /// Get total round deployment time in milliseconds (from pipeline start to last deploy confirmed)
@@ -270,14 +280,16 @@ impl PipelineStats {
     pub fn reset(&self) {
         // Round timing
         self.round_pipeline_start_ms.store(0, Ordering::Relaxed);
-        self.round_last_deploy_confirmed_ms.store(0, Ordering::Relaxed);
+        self.round_last_deploy_confirmed_ms
+            .store(0, Ordering::Relaxed);
         self.miners_sent_to_pipeline.store(0, Ordering::Relaxed);
         // Processing counts
         self.miners_processed.store(0, Ordering::Relaxed);
         self.miners_skipped_wrong_fee.store(0, Ordering::Relaxed);
         self.miners_skipped_low_balance.store(0, Ordering::Relaxed);
         self.miners_skipped_no_slots.store(0, Ordering::Relaxed);
-        self.miners_skipped_already_deployed.store(0, Ordering::Relaxed);
+        self.miners_skipped_already_deployed
+            .store(0, Ordering::Relaxed);
         self.miners_deployed.store(0, Ordering::Relaxed);
         self.miners_deploy_failed.store(0, Ordering::Relaxed);
         self.miners_checkpointed.store(0, Ordering::Relaxed);
@@ -299,9 +311,11 @@ impl PipelineStats {
         self.fee_update_count_for_avg.store(0, Ordering::Relaxed);
         self.lut_check_total_time_ms.store(0, Ordering::Relaxed);
         self.lut_check_count.store(0, Ordering::Relaxed);
-        self.deployment_check_total_time_ms.store(0, Ordering::Relaxed);
+        self.deployment_check_total_time_ms
+            .store(0, Ordering::Relaxed);
         self.deployment_check_count.store(0, Ordering::Relaxed);
-        self.confirmation_batch_total_time_ms.store(0, Ordering::Relaxed);
+        self.confirmation_batch_total_time_ms
+            .store(0, Ordering::Relaxed);
         self.confirmation_batch_count.store(0, Ordering::Relaxed);
     }
 
@@ -311,12 +325,13 @@ impl PipelineStats {
         let miners_deployed = self.get(&self.miners_deployed);
         let miners_failed = self.get(&self.miners_deploy_failed);
         let miners_checkpointed = self.get(&self.miners_checkpointed);
-        
+
         let skipped_wrong_fee = self.get(&self.miners_skipped_wrong_fee);
         let skipped_low_balance = self.get(&self.miners_skipped_low_balance);
         let skipped_no_slots = self.get(&self.miners_skipped_no_slots);
         let skipped_already_deployed = self.get(&self.miners_skipped_already_deployed);
-        let total_skipped = skipped_wrong_fee + skipped_low_balance + skipped_no_slots + skipped_already_deployed;
+        let total_skipped =
+            skipped_wrong_fee + skipped_low_balance + skipped_no_slots + skipped_already_deployed;
 
         // Calculate total deployment time
         let total_time_str = match self.round_total_deploy_time_ms() {
@@ -327,11 +342,7 @@ impl PipelineStats {
             None => "N/A".to_string(),
         };
 
-        tracing::info!(
-            "[Stats] Round {} | Phase: {}",
-            round_id,
-            phase
-        );
+        tracing::info!("[Stats] Round {} | Phase: {}", round_id, phase);
         tracing::info!(
             "        Total deployment time: {} (from pipeline start to last deploy confirmed)",
             total_time_str
@@ -398,4 +409,3 @@ impl SharedState {
         }
     }
 }
-

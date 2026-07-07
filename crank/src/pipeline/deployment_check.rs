@@ -31,10 +31,7 @@ pub async fn run(
     rx: mpsc::Receiver<MinerTask>,
     num_workers: usize,
 ) {
-    info!(
-        "[DeploymentCheck] Starting with {} workers...",
-        num_workers
-    );
+    info!("[DeploymentCheck] Starting with {} workers...", num_workers);
 
     // Create a shared receiver using Arc<Mutex>
     let rx = Arc::new(tokio::sync::Mutex::new(rx));
@@ -116,9 +113,15 @@ async fn run_worker(
         if !can_deploy {
             warn!(
                 "{} SKIPPED no_slots | manager: {} | miner: {} | auth: {} | phase: {}",
-                prefix, task.manager(), task.miner_address, task.miner_auth, phase
+                prefix,
+                task.manager(),
+                task.miner_address,
+                task.miner_auth,
+                phase
             );
-            shared.stats.increment(&shared.stats.miners_skipped_no_slots);
+            shared
+                .stats
+                .increment(&shared.stats.miners_skipped_no_slots);
             skipped_count += 1;
             continue;
         }
@@ -127,7 +130,8 @@ async fn run_worker(
         if miner.round_id == current_round_id && miner.has_deployed {
             debug!(
                 "{} {} - already deployed this round",
-                prefix, task.manager()
+                prefix,
+                task.manager()
             );
             shared
                 .stats
@@ -140,7 +144,11 @@ async fn run_worker(
         if !task.can_retry() && task.retry_count > 0 {
             warn!(
                 "{} SKIPPED max_retries | manager: {} | miner: {} | auth: {} | retries: {}",
-                prefix, task.manager(), task.miner_address, task.miner_auth, task.retry_count
+                prefix,
+                task.manager(),
+                task.miner_address,
+                task.miner_auth,
+                task.retry_count
             );
             skipped_count += 1;
             continue;
@@ -159,7 +167,10 @@ async fn run_worker(
             // Can deploy - checkpoint (if needed) will be bundled with deploy via mm_full_autodeploy
             debug!(
                 "{} {} - ready to deploy (balance: {} lamports, needs_checkpoint: {})",
-                prefix, task.manager(), balance, needs_checkpoint
+                prefix,
+                task.manager(),
+                balance,
+                needs_checkpoint
             );
             if let Err(e) = senders.to_deployer_batcher.send(task).await {
                 warn!("{} Failed to send to deployer batcher: {}", prefix, e);
@@ -180,7 +191,12 @@ async fn run_worker(
             // Can't deploy and no checkpoint needed - nothing to do
             warn!(
                 "{} SKIPPED low_balance | manager: {} | miner: {} | auth: {} | balance: {} < {}",
-                prefix, task.manager(), task.miner_address, task.miner_auth, balance, MIN_DEPLOY_BALANCE
+                prefix,
+                task.manager(),
+                task.miner_address,
+                task.miner_auth,
+                balance,
+                MIN_DEPLOY_BALANCE
             );
             shared
                 .stats
@@ -210,4 +226,3 @@ async fn run_worker(
         prefix, deploy_count, checkpoint_count, skipped_count
     );
 }
-

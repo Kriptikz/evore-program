@@ -1,6 +1,4 @@
-use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, system_program
-};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, system_program};
 use steel::*;
 
 use crate::state::Manager;
@@ -9,9 +7,7 @@ pub fn process_create_manager(
     accounts: &[AccountInfo],
     _instruction_data: &[u8],
 ) -> Result<(), ProgramError> {
-    let [signer, managed_miner_account_info, system_program] =
-        accounts
-    else {
+    let [signer, managed_miner_account_info, system_program] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 

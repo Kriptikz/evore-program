@@ -1,6 +1,4 @@
-use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey,
-};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use steel::*;
 
 use crate::{
@@ -8,7 +6,7 @@ use crate::{
     error::EvoreError,
     instruction::UpdateStratDeployer,
     state::{Manager, StrategyDeployer},
-    validation::{StrategyType, validate_strategy_data},
+    validation::{validate_strategy_data, StrategyType},
 };
 
 pub fn process_update_strat_deployer(
@@ -24,13 +22,9 @@ pub fn process_update_strat_deployer(
     let new_strategy_type = args.strategy_type;
     let new_strategy_data = args.strategy_data;
 
-    let [
-        signer,
-        manager_account_info,
-        strat_deployer_account_info,
-        new_deploy_authority_info,
-        _system_program_info,
-    ] = accounts else {
+    let [signer, manager_account_info, strat_deployer_account_info, new_deploy_authority_info, _system_program_info] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 

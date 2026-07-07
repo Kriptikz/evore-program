@@ -181,31 +181,28 @@ async fn process_batch(
     };
 
     if lut_accounts.is_empty() {
-        error!(
-            "[DeployerBatcher] No LUTs found for batch, cannot proceed"
-        );
+        error!("[DeployerBatcher] No LUTs found for batch, cannot proceed");
         return;
     }
 
     // Get recent blockhash
-    let (recent_blockhash, _) = match rpc_client
-        .get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())
-    {
-        Ok(bh) => bh,
-        Err(e) => {
-            error!(
-                "[DeployerBatcher] Failed to get blockhash: {}. Retrying miners.",
-                e
-            );
-            // Send miners back for retry
-            for task in batch {
-                if task.can_retry() {
-                    let _ = senders.to_deployment_check.send(task.with_retry()).await;
+    let (recent_blockhash, _) =
+        match rpc_client.get_latest_blockhash_with_commitment(CommitmentConfig::confirmed()) {
+            Ok(bh) => bh,
+            Err(e) => {
+                error!(
+                    "[DeployerBatcher] Failed to get blockhash: {}. Retrying miners.",
+                    e
+                );
+                // Send miners back for retry
+                for task in batch {
+                    if task.can_retry() {
+                        let _ = senders.to_deployment_check.send(task.with_retry()).await;
+                    }
                 }
+                return;
             }
-            return;
-        }
-    };
+        };
 
     // Build instructions
     let mut instructions = vec![
@@ -240,10 +237,7 @@ async fn process_batch(
         ) {
             Ok(tx) => tx,
             Err(e) => {
-                error!(
-                    "[DeployerBatcher] Failed to build transaction: {}",
-                    e
-                );
+                error!("[DeployerBatcher] Failed to build transaction: {}", e);
                 return;
             }
         }
@@ -261,10 +255,7 @@ async fn process_batch(
 
     // Send to transaction processor
     if let Err(e) = senders.to_tx_processor.send(batched_tx).await {
-        error!(
-            "[DeployerBatcher] Failed to send to tx processor: {}",
-            e
-        );
+        error!("[DeployerBatcher] Failed to send to tx processor: {}", e);
     }
 
     shared.stats.increment(&shared.stats.deploys_sent);
@@ -273,4 +264,3 @@ async fn process_batch(
         batch_size
     );
 }
-

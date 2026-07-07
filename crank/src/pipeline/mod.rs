@@ -62,10 +62,7 @@ pub async fn run_pipeline(
     info!("Starting pipeline architecture...");
 
     // Initialize shared state
-    let shared = Arc::new(SharedState::new(
-        &config.rpc_url,
-        deploy_authority.pubkey(),
-    ));
+    let shared = Arc::new(SharedState::new(&config.rpc_url, deploy_authority.pubkey()));
 
     // Create channels
     let mut channels = PipelineChannels::new();
@@ -75,50 +72,22 @@ pub async fn run_pipeline(
     let main_sender = senders.clone();
 
     // Take receivers out of channels struct for the systems
-    let fee_check_rx = std::mem::replace(
-        &mut channels.from_fee_check,
-        mpsc::channel(1).1,
-    );
-    let expected_fee_updater_rx = std::mem::replace(
-        &mut channels.from_expected_fee_updater,
-        mpsc::channel(1).1,
-    );
-    let lut_check_rx = std::mem::replace(
-        &mut channels.from_lut_check,
-        mpsc::channel(1).1,
-    );
-    let lut_creation_rx = std::mem::replace(
-        &mut channels.from_lut_creation,
-        mpsc::channel(1).1,
-    );
-    let deployment_check_rx = std::mem::replace(
-        &mut channels.from_deployment_check,
-        mpsc::channel(1).1,
-    );
-    let checkpoint_batcher_rx = std::mem::replace(
-        &mut channels.from_checkpoint_batcher,
-        mpsc::channel(1).1,
-    );
-    let deployer_batcher_rx = std::mem::replace(
-        &mut channels.from_deployer_batcher,
-        mpsc::channel(1).1,
-    );
-    let tx_processor_rx = std::mem::replace(
-        &mut channels.from_tx_processor,
-        mpsc::channel(1).1,
-    );
-    let tx_sender_rx = std::mem::replace(
-        &mut channels.from_tx_sender,
-        mpsc::channel(1).1,
-    );
-    let confirmation_rx = std::mem::replace(
-        &mut channels.from_confirmation,
-        mpsc::channel(1).1,
-    );
-    let failure_handler_rx = std::mem::replace(
-        &mut channels.from_failure_handler,
-        mpsc::channel(1).1,
-    );
+    let fee_check_rx = std::mem::replace(&mut channels.from_fee_check, mpsc::channel(1).1);
+    let expected_fee_updater_rx =
+        std::mem::replace(&mut channels.from_expected_fee_updater, mpsc::channel(1).1);
+    let lut_check_rx = std::mem::replace(&mut channels.from_lut_check, mpsc::channel(1).1);
+    let lut_creation_rx = std::mem::replace(&mut channels.from_lut_creation, mpsc::channel(1).1);
+    let deployment_check_rx =
+        std::mem::replace(&mut channels.from_deployment_check, mpsc::channel(1).1);
+    let checkpoint_batcher_rx =
+        std::mem::replace(&mut channels.from_checkpoint_batcher, mpsc::channel(1).1);
+    let deployer_batcher_rx =
+        std::mem::replace(&mut channels.from_deployer_batcher, mpsc::channel(1).1);
+    let tx_processor_rx = std::mem::replace(&mut channels.from_tx_processor, mpsc::channel(1).1);
+    let tx_sender_rx = std::mem::replace(&mut channels.from_tx_sender, mpsc::channel(1).1);
+    let confirmation_rx = std::mem::replace(&mut channels.from_confirmation, mpsc::channel(1).1);
+    let failure_handler_rx =
+        std::mem::replace(&mut channels.from_failure_handler, mpsc::channel(1).1);
 
     // Spawn all systems as tokio tasks
     let handles = vec![
@@ -299,7 +268,9 @@ pub async fn run_pipeline(
                 }
 
                 // Record how many miners were sent
-                shared.stats.add(&shared.stats.miners_sent_to_pipeline, sent_count);
+                shared
+                    .stats
+                    .add(&shared.stats.miners_sent_to_pipeline, sent_count);
                 info!("Sent {} miners to pipeline", sent_count);
             }
             Err(e) => {
@@ -316,9 +287,9 @@ async fn discover_deployers(
     deploy_authority: &Keypair,
 ) -> Result<Vec<DeployerInfo>, CrankError> {
     use evore::state::Deployer;
+    use solana_account_decoder::UiAccountEncoding;
     use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
     use solana_client::rpc_filter::{Memcmp, RpcFilterType};
-    use solana_account_decoder::UiAccountEncoding;
     use steel::AccountDeserialize;
 
     let deploy_authority_pubkey = deploy_authority.pubkey();
@@ -384,4 +355,3 @@ async fn discover_deployers(
 
     Ok(deployers)
 }
-

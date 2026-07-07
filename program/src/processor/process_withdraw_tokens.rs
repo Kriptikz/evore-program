@@ -1,11 +1,9 @@
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program
+    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey, system_program,
 };
 use steel::*;
 
-use crate::{
-    error::EvoreError, instruction::WithdrawTokens, state::Manager
-};
+use crate::{error::EvoreError, instruction::WithdrawTokens, state::Manager};
 
 pub fn process_withdraw_tokens(
     accounts: &[AccountInfo],
@@ -14,17 +12,9 @@ pub fn process_withdraw_tokens(
     let args = WithdrawTokens::try_from_bytes(instruction_data)?;
     let auth_id = u64::from_le_bytes(args.auth_id);
 
-    let [
-        signer,
-        manager_account_info,
-        managed_miner_auth_account_info,
-        source_ata_account_info,
-        destination_ata_account_info,
-        mint_account_info,
-        system_program,
-        spl_program,
-        spl_ata_program,
-    ] = accounts else {
+    let [signer, manager_account_info, managed_miner_auth_account_info, source_ata_account_info, destination_ata_account_info, mint_account_info, system_program, spl_program, spl_ata_program] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -64,8 +54,7 @@ pub fn process_withdraw_tokens(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let manager = manager_account_info
-        .as_account::<Manager>(&crate::id())?;
+    let manager = manager_account_info.as_account::<Manager>(&crate::id())?;
 
     if manager.authority != *signer.key {
         return Err(EvoreError::NotAuthorized.into());
@@ -79,7 +68,8 @@ pub fn process_withdraw_tokens(
             &[args.bump],
         ],
         &crate::id(),
-    ).map_err(|_| EvoreError::InvalidPDA)?;
+    )
+    .map_err(|_| EvoreError::InvalidPDA)?;
 
     if managed_miner_auth_pda != *managed_miner_auth_account_info.key {
         return Err(EvoreError::InvalidPDA.into());

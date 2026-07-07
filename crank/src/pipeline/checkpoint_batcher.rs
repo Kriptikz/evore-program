@@ -194,10 +194,7 @@ async fn process_batch(
     let versioned_tx = match solana_sdk::transaction::VersionedTransaction::try_from(tx) {
         Ok(vtx) => vtx,
         Err(e) => {
-            error!(
-                "[CheckpointBatcher] Failed to convert transaction: {}",
-                e
-            );
+            error!("[CheckpointBatcher] Failed to convert transaction: {}", e);
             return;
         }
     };
@@ -210,10 +207,7 @@ async fn process_batch(
 
     // Send to transaction processor
     if let Err(e) = senders.to_tx_processor.send(batched_tx).await {
-        error!(
-            "[CheckpointBatcher] Failed to send to tx processor: {}",
-            e
-        );
+        error!("[CheckpointBatcher] Failed to send to tx processor: {}", e);
     }
 
     shared.stats.increment(&shared.stats.checkpoints_sent);
@@ -222,4 +216,3 @@ async fn process_batch(
         batch_size
     );
 }
-

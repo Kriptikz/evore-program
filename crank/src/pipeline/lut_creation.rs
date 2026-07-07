@@ -69,18 +69,12 @@ pub async fn run(
                     );
                 } else {
                     found_count += 1;
-                    debug!(
-                        "[LUTCreation] Found existing LUT for {}",
-                        task.manager()
-                    );
+                    debug!("[LUTCreation] Found existing LUT for {}", task.manager());
                 }
 
                 // Send to deployment check
                 if let Err(e) = senders.to_deployment_check.send(task).await {
-                    warn!(
-                        "[LUTCreation] Failed to send to deployment check: {}",
-                        e
-                    );
+                    warn!("[LUTCreation] Failed to send to deployment check: {}", e);
                 }
             }
             Err(e) => {
@@ -102,10 +96,7 @@ pub async fn run(
                         error!("[LUTCreation] Failed to retry: {}", e);
                     }
                 } else {
-                    error!(
-                        "[LUTCreation] Max retries exceeded for {}",
-                        task.manager()
-                    );
+                    error!("[LUTCreation] Max retries exceeded for {}", task.manager());
                 }
             }
         }
@@ -155,7 +146,14 @@ async fn ensure_miner_lut(
 
     // Get miner accounts and extend LUT
     let miner_accounts = get_miner_accounts(task.manager(), AUTH_ID);
-    extend_lut(rpc_client, deploy_authority, sender, lut_address, miner_accounts.clone()).await?;
+    extend_lut(
+        rpc_client,
+        deploy_authority,
+        sender,
+        lut_address,
+        miner_accounts.clone(),
+    )
+    .await?;
 
     // Register in cache
     {
@@ -193,8 +191,9 @@ async fn create_lut(
         create_ix,
     ];
 
-    let tx = LutRegistry::build_versioned_tx_no_lut(deploy_authority, instructions, recent_blockhash)
-        .map_err(|e| format!("Failed to build tx: {}", e))?;
+    let tx =
+        LutRegistry::build_versioned_tx_no_lut(deploy_authority, instructions, recent_blockhash)
+            .map_err(|e| format!("Failed to build tx: {}", e))?;
 
     sender
         .send_and_confirm_versioned_rpc(&tx, 60)
@@ -234,15 +233,18 @@ async fn extend_lut(
         extend_ix,
     ];
 
-    let tx = LutRegistry::build_versioned_tx_no_lut(deploy_authority, instructions, recent_blockhash)
-        .map_err(|e| format!("Failed to build tx: {}", e))?;
+    let tx =
+        LutRegistry::build_versioned_tx_no_lut(deploy_authority, instructions, recent_blockhash)
+            .map_err(|e| format!("Failed to build tx: {}", e))?;
 
     sender
         .send_and_confirm_versioned_rpc(&tx, 60)
         .await
         .map_err(|e| format!("Failed to send tx: {}", e))?;
 
-    debug!("[LUTCreation] Extended LUT {} with {} addresses", lut_address, 5);
+    debug!(
+        "[LUTCreation] Extended LUT {} with {} addresses",
+        lut_address, 5
+    );
     Ok(())
 }
-

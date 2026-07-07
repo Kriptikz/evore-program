@@ -56,10 +56,7 @@ pub async fn run(
             cached_count += 1;
         } else {
             // Slow path: need to create LUT
-            debug!(
-                "[LUTCheck] {} needs LUT creation",
-                task.manager()
-            );
+            debug!("[LUTCheck] {} needs LUT creation", task.manager());
             if let Err(e) = senders.to_lut_creation.send(task).await {
                 warn!("[LUTCheck] Failed to send to LUT creation: {}", e);
             }
@@ -94,4 +91,3 @@ pub async fn run(
         cached_count, creation_count, avg_time
     );
 }
-

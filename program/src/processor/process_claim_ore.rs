@@ -1,10 +1,11 @@
-use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey,
-};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use steel::*;
 
 use crate::{
-    error::EvoreError, instruction::MMClaimORE, ore_api::{self}, state::Manager
+    error::EvoreError,
+    instruction::MMClaimORE,
+    ore_api::{self},
+    state::Manager,
 };
 
 pub fn process_claim_ore(
@@ -14,22 +15,9 @@ pub fn process_claim_ore(
     let args = MMClaimORE::try_from_bytes(instruction_data)?;
     let auth_id = u64::from_le_bytes(args.auth_id);
 
-    let [
-            signer,
-            manager_account_info,
-            managed_miner_auth_account_info,
-            board_account_info,
-            ore_miner_account_info,
-            mint_account_info,
-            recipient_account_info,
-            signer_recipient_account_info,
-            treasury_account_info,
-            treasury_tokens_account_info,
-            system_program,
-            spl_program,
-            spl_ata_program,
-            ore_program,
-    ] = accounts else {
+    let [signer, manager_account_info, managed_miner_auth_account_info, board_account_info, ore_miner_account_info, mint_account_info, recipient_account_info, signer_recipient_account_info, treasury_account_info, treasury_tokens_account_info, system_program, spl_program, spl_ata_program, ore_program] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -77,8 +65,7 @@ pub fn process_claim_ore(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let manager = manager_account_info
-        .as_account::<Manager>(&crate::id())?;
+    let manager = manager_account_info.as_account::<Manager>(&crate::id())?;
 
     if manager.authority != *signer.key {
         return Err(EvoreError::NotAuthorized.into());
@@ -93,7 +80,8 @@ pub fn process_claim_ore(
             &[args.bump],
         ],
         &crate::id(),
-    ).map_err(|_| EvoreError::InvalidPDA)?;
+    )
+    .map_err(|_| EvoreError::InvalidPDA)?;
 
     if managed_miner_auth_pda != *managed_miner_auth_account_info.key {
         return Err(EvoreError::InvalidPDA.into());
@@ -125,13 +113,14 @@ pub fn process_claim_ore(
             spl_ata_program,
         )?;
     } else {
-        recipient_account_info.as_associated_token_account(managed_miner_auth_account_info.key, mint_account_info.key)?;
+        recipient_account_info.as_associated_token_account(
+            managed_miner_auth_account_info.key,
+            mint_account_info.key,
+        )?;
     }
 
     solana_program::program::invoke_signed(
-        &ore_api::claim_ore(
-            managed_miner_auth_key,
-        ),
+        &ore_api::claim_ore(managed_miner_auth_key),
         &claim_ore_accounts,
         &[&[
             crate::consts::MANAGED_MINER_AUTH,
@@ -140,7 +129,6 @@ pub fn process_claim_ore(
             &[args.bump],
         ]],
     )?;
-
 
     if signer_recipient_account_info.data_is_empty() {
         create_associated_token_account(
@@ -153,10 +141,12 @@ pub fn process_claim_ore(
             spl_ata_program,
         )?;
     } else {
-        signer_recipient_account_info.as_associated_token_account(signer.key, mint_account_info.key)?;
+        signer_recipient_account_info
+            .as_associated_token_account(signer.key, mint_account_info.key)?;
     }
 
-    let managed_auth_tokens = recipient_account_info.as_associated_token_account(&managed_miner_auth_key, &mint_account_info.key)?;
+    let managed_auth_tokens = recipient_account_info
+        .as_associated_token_account(&managed_miner_auth_key, &mint_account_info.key)?;
 
     transfer_signed_with_bump(
         managed_miner_auth_account_info,
@@ -169,9 +159,8 @@ pub fn process_claim_ore(
             manager_account_info.key.as_ref(),
             &auth_id.to_le_bytes(),
         ],
-        args.bump
+        args.bump,
     )?;
 
     Ok(())
 }
-

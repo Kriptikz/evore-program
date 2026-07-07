@@ -1,8 +1,8 @@
-use steel::*;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
+use steel::*;
 
-use crate::consts::{MANAGED_MINER_AUTH, DEPLOYER, STRATEGY_DEPLOYER};
+use crate::consts::{DEPLOYER, MANAGED_MINER_AUTH, STRATEGY_DEPLOYER};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
@@ -15,7 +15,7 @@ pub enum EvoreAccount {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable, Serialize, Deserialize)]
 pub struct Manager {
-    /// The authority of this managed miner account. Which is authority of all 
+    /// The authority of this managed miner account. Which is authority of all
     /// associated auth_id's miners
     pub authority: Pubkey,
 }
@@ -26,7 +26,7 @@ account!(EvoreAccount, Manager);
 /// PDA seeds: ["deployer", manager_key]
 /// Stores manager_key for easy lookup when scanning by deploy_authority
 /// The deployer charges fees on each deployment (both fees are applied if > 0)
-/// 
+///
 /// expected_bps_fee and expected_flat_fee provide deploy_authority protection.
 /// If expected fee > 0, the actual fee must match for the deploy to succeed.
 /// Size: 32 + 32 + 8 + 8 + 8 + 8 + 8 = 104 bytes (+ 8 discriminator = 112)
@@ -76,7 +76,14 @@ pub fn strategy_deployer_pda(manager_key: Pubkey) -> (Pubkey, u8) {
 }
 
 pub fn managed_miner_auth_pda(manager: Pubkey, auth_id: u64) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[MANAGED_MINER_AUTH, &manager.to_bytes(), &auth_id.to_le_bytes()], &crate::ID)
+    Pubkey::find_program_address(
+        &[
+            MANAGED_MINER_AUTH,
+            &manager.to_bytes(),
+            &auth_id.to_le_bytes(),
+        ],
+        &crate::ID,
+    )
 }
 
 /// Derives the deployer PDA for a given manager key

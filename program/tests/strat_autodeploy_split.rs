@@ -2,10 +2,10 @@ mod strat_common;
 
 use strat_common::*;
 
-use evore::state::{strategy_deployer_pda, managed_miner_auth_pda};
 use evore::instruction::{create_strat_deployer, mm_strat_autodeploy};
 use evore::ore_api::miner_pda;
-use solana_sdk::{signature::Keypair, signer::Signer, pubkey::Pubkey};
+use evore::state::{managed_miner_auth_pda, strategy_deployer_pda};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 async fn setup_split_test(
     max_per_round: u64,
@@ -13,10 +13,10 @@ async fn setup_split_test(
     motherlode_max: u64,
 ) -> (
     solana_program_test::ProgramTestContext,
-    Keypair,  // deploy_authority
-    Pubkey,   // manager pubkey
-    Pubkey,   // managed_miner_auth
-    u64,      // auth_id
+    Keypair, // deploy_authority
+    Pubkey,  // manager pubkey
+    Pubkey,  // managed_miner_auth
+    u64,     // auth_id
 ) {
     let mut program_test = setup_programs();
     let manager = Keypair::new();
@@ -37,27 +37,51 @@ async fn setup_split_test(
     let payer = context.payer.insecure_clone();
 
     let fund_ix = solana_sdk::system_instruction::transfer(
-        &payer.pubkey(), &authority.pubkey(), 2_000_000_000,
+        &payer.pubkey(),
+        &authority.pubkey(),
+        2_000_000_000,
     );
     let fund_ix2 = solana_sdk::system_instruction::transfer(
-        &payer.pubkey(), &deploy_authority.pubkey(), 2_000_000_000,
+        &payer.pubkey(),
+        &deploy_authority.pubkey(),
+        2_000_000_000,
     );
     let fund_fee_collector = solana_sdk::system_instruction::transfer(
-        &payer.pubkey(), &evore::consts::FEE_COLLECTOR, 1_000_000,
+        &payer.pubkey(),
+        &evore::consts::FEE_COLLECTOR,
+        1_000_000,
     );
-    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fee_collector], &[&payer]).await.unwrap();
+    send_transaction(
+        &mut context,
+        &[fund_ix, fund_ix2, fund_fee_collector],
+        &[&payer],
+    )
+    .await
+    .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = create_strat_deployer(
-        authority.pubkey(), manager.pubkey(), deploy_authority.pubkey(),
-        0, 0, max_per_round,
+        authority.pubkey(),
+        manager.pubkey(),
+        deploy_authority.pubkey(),
+        0,
+        0,
+        max_per_round,
         3, // Split
         strategy_data,
     );
-    send_transaction(&mut context, &[ix], &[&payer, &authority]).await.unwrap();
+    send_transaction(&mut context, &[ix], &[&payer, &authority])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    (context, deploy_authority, manager.pubkey(), mma_pda, auth_id)
+    (
+        context,
+        deploy_authority,
+        manager.pubkey(),
+        mma_pda,
+        auth_id,
+    )
 }
 
 // ============================================================================
@@ -84,7 +108,11 @@ async fn test_split_deploys_to_all_squares() {
     );
 
     let result = send_transaction(&mut context, &[ix], &[&payer, &deploy_authority]).await;
-    assert!(result.is_ok(), "Split autodeploy should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Split autodeploy should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[tokio::test]
@@ -99,9 +127,13 @@ async fn test_split_small_bankroll_rounds_down() {
         manager,
         auth_id,
         24, // too small to divide by 25
-        0, 0,
+        0,
+        0,
     );
 
     let result = send_transaction(&mut context, &[ix], &[&payer, &deploy_authority]).await;
-    assert!(result.is_err(), "Split with <25 lamports bankroll should fail");
+    assert!(
+        result.is_err(),
+        "Split with <25 lamports bankroll should fail"
+    );
 }

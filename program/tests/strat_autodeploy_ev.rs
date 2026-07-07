@@ -2,10 +2,10 @@ mod strat_common;
 
 use strat_common::*;
 
-use evore::state::{strategy_deployer_pda, managed_miner_auth_pda};
 use evore::instruction::{create_strat_deployer, mm_strat_autodeploy};
 use evore::ore_api::miner_pda;
-use solana_sdk::{signature::Keypair, signer::Signer, pubkey::Pubkey};
+use evore::state::{managed_miner_auth_pda, strategy_deployer_pda};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 async fn setup_ev_test(
     max_per_square: u64,
@@ -15,10 +15,10 @@ async fn setup_ev_test(
     max_per_round: u64,
 ) -> (
     solana_program_test::ProgramTestContext,
-    Keypair,  // deploy_authority
-    Pubkey,   // manager pubkey
-    Pubkey,   // managed_miner_auth
-    u64,      // auth_id
+    Keypair, // deploy_authority
+    Pubkey,  // manager pubkey
+    Pubkey,  // managed_miner_auth
+    u64,     // auth_id
 ) {
     let mut program_test = setup_programs();
     let manager = Keypair::new();
@@ -39,28 +39,48 @@ async fn setup_ev_test(
     let payer = context.payer.insecure_clone();
 
     let fund_ix = solana_sdk::system_instruction::transfer(
-        &payer.pubkey(), &authority.pubkey(), 2_000_000_000,
+        &payer.pubkey(),
+        &authority.pubkey(),
+        2_000_000_000,
     );
     let fund_ix2 = solana_sdk::system_instruction::transfer(
-        &payer.pubkey(), &deploy_authority.pubkey(), 2_000_000_000,
+        &payer.pubkey(),
+        &deploy_authority.pubkey(),
+        2_000_000_000,
     );
     // Fund FEE_COLLECTOR to keep it rent-exempt after protocol fee transfers
     let fund_fc = solana_sdk::system_instruction::transfer(
-        &payer.pubkey(), &evore::consts::FEE_COLLECTOR, 1_000_000_000,
+        &payer.pubkey(),
+        &evore::consts::FEE_COLLECTOR,
+        1_000_000_000,
     );
-    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fc], &[&payer]).await.unwrap();
+    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fc], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = create_strat_deployer(
-        authority.pubkey(), manager.pubkey(), deploy_authority.pubkey(),
-        0, 0, max_per_round,
+        authority.pubkey(),
+        manager.pubkey(),
+        deploy_authority.pubkey(),
+        0,
+        0,
+        max_per_round,
         0, // EV
         strategy_data,
     );
-    send_transaction(&mut context, &[ix], &[&payer, &authority]).await.unwrap();
+    send_transaction(&mut context, &[ix], &[&payer, &authority])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    (context, deploy_authority, manager.pubkey(), mma_pda, auth_id)
+    (
+        context,
+        deploy_authority,
+        manager.pubkey(),
+        mma_pda,
+        auth_id,
+    )
 }
 
 // ============================================================================
@@ -69,14 +89,14 @@ async fn setup_ev_test(
 
 #[tokio::test]
 async fn test_ev_deploys_to_positive_ev_squares() {
-    let (mut context, deploy_authority, manager, mma_pda, auth_id) =
-        setup_ev_test(
-            500_000_000,  // max 0.5 SOL per square
-            1_000_000,    // min bet 0.001 SOL
-            500,          // slots_left threshold
-            2_000_000_000, // 2 SOL ore value
-            0,            // no max per round
-        ).await;
+    let (mut context, deploy_authority, manager, mma_pda, auth_id) = setup_ev_test(
+        500_000_000,   // max 0.5 SOL per square
+        1_000_000,     // min bet 0.001 SOL
+        500,           // slots_left threshold
+        2_000_000_000, // 2 SOL ore value
+        0,             // no max per round
+    )
+    .await;
     let payer = context.payer.insecure_clone();
 
     // For EV: `amount` is bankroll
@@ -92,19 +112,23 @@ async fn test_ev_deploys_to_positive_ev_squares() {
     );
 
     let result = send_transaction(&mut context, &[ix], &[&payer, &deploy_authority]).await;
-    assert!(result.is_ok(), "EV autodeploy should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "EV autodeploy should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[tokio::test]
 async fn test_ev_small_bankroll_still_deploys() {
-    let (mut context, deploy_authority, manager, mma_pda, auth_id) =
-        setup_ev_test(
-            100_000_000,
-            1_000_000,   // 0.001 SOL min bet
-            500,
-            0,           // no ore value
-            0,
-        ).await;
+    let (mut context, deploy_authority, manager, mma_pda, auth_id) = setup_ev_test(
+        100_000_000,
+        1_000_000, // 0.001 SOL min bet
+        500,
+        0, // no ore value
+        0,
+    )
+    .await;
     let payer = context.payer.insecure_clone();
 
     let ix = mm_strat_autodeploy(
@@ -112,9 +136,14 @@ async fn test_ev_small_bankroll_still_deploys() {
         manager,
         auth_id,
         50_000_000, // 0.05 SOL bankroll
-        0, 0,
+        0,
+        0,
     );
 
     let result = send_transaction(&mut context, &[ix], &[&payer, &deploy_authority]).await;
-    assert!(result.is_ok(), "EV with small bankroll should deploy to best squares: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "EV with small bankroll should deploy to best squares: {:?}",
+        result.err()
+    );
 }

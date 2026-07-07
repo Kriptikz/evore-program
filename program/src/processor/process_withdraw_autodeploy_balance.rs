@@ -4,9 +4,7 @@ use solana_program::{
 use steel::*;
 
 use crate::{
-    consts::MANAGED_MINER_AUTH,
-    error::EvoreError,
-    instruction::WithdrawAutodeployBalance,
+    consts::MANAGED_MINER_AUTH, error::EvoreError, instruction::WithdrawAutodeployBalance,
     state::Manager,
 };
 
@@ -51,7 +49,11 @@ pub fn process_withdraw_autodeploy_balance(
 
     // Verify managed_miner_auth PDA
     let (managed_miner_auth_pda, managed_miner_auth_bump) = Pubkey::find_program_address(
-        &[MANAGED_MINER_AUTH, manager_account_info.key.as_ref(), &auth_id.to_le_bytes()],
+        &[
+            MANAGED_MINER_AUTH,
+            manager_account_info.key.as_ref(),
+            &auth_id.to_le_bytes(),
+        ],
         &crate::id(),
     );
 
@@ -63,7 +65,7 @@ pub fn process_withdraw_autodeploy_balance(
     const AUTH_PDA_RENT: u64 = 890_880;
     let current_balance = managed_miner_auth_account_info.lamports();
     let available = current_balance.saturating_sub(AUTH_PDA_RENT);
-    
+
     if available < amount {
         return Err(EvoreError::InsufficientAutodeployBalance.into());
     }

@@ -29,7 +29,10 @@ impl TryFrom<u8> for StrategyType {
     }
 }
 
-pub fn validate_strategy_data(strategy_type: StrategyType, strategy_data: &[u8; 64]) -> Result<(), ProgramError> {
+pub fn validate_strategy_data(
+    strategy_type: StrategyType,
+    strategy_data: &[u8; 64],
+) -> Result<(), ProgramError> {
     match strategy_type {
         StrategyType::Ev => {
             let max_per_square = u64::from_le_bytes(strategy_data[0..8].try_into().unwrap());

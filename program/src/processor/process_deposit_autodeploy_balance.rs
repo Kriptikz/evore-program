@@ -4,9 +4,7 @@ use solana_program::{
 use steel::*;
 
 use crate::{
-    consts::MANAGED_MINER_AUTH,
-    error::EvoreError,
-    instruction::DepositAutodeployBalance,
+    consts::MANAGED_MINER_AUTH, error::EvoreError, instruction::DepositAutodeployBalance,
     state::Manager,
 };
 
@@ -18,12 +16,9 @@ pub fn process_deposit_autodeploy_balance(
     let auth_id = u64::from_le_bytes(args.auth_id);
     let amount = u64::from_le_bytes(args.amount);
 
-    let [
-        signer,
-        manager_account_info,
-        managed_miner_auth_account_info,
-        system_program_info,
-    ] = accounts else {
+    let [signer, manager_account_info, managed_miner_auth_account_info, system_program_info] =
+        accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
 
@@ -50,7 +45,11 @@ pub fn process_deposit_autodeploy_balance(
 
     // Verify managed_miner_auth PDA
     let (managed_miner_auth_pda, _) = Pubkey::find_program_address(
-        &[MANAGED_MINER_AUTH, manager_account_info.key.as_ref(), &auth_id.to_le_bytes()],
+        &[
+            MANAGED_MINER_AUTH,
+            manager_account_info.key.as_ref(),
+            &auth_id.to_le_bytes(),
+        ],
         &crate::id(),
     );
 

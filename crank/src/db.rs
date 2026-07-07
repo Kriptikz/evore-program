@@ -31,7 +31,7 @@ impl TxStatus {
             _ => TxStatus::Pending,
         }
     }
-    
+
     pub fn as_str(&self) -> &'static str {
         match self {
             TxStatus::Pending => "pending",
@@ -97,16 +97,17 @@ pub async fn init_db(db_path: &Path) -> Result<Pool<Sqlite>, sqlx::Error> {
     if !db_path.exists() {
         std::fs::File::create(db_path)?;
     }
-    
+
     let db_url = format!("sqlite:{}", db_path.display());
-    
+
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
         .await?;
-    
+
     // Create the autodeploy_txs table
-    sqlx::query(r#"
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS autodeploy_txs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             signature TEXT NOT NULL UNIQUE,
@@ -132,27 +133,30 @@ pub async fn init_db(db_path: &Path) -> Result<Pool<Sqlite>, sqlx::Error> {
             slot INTEGER,
             created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
         )
-    "#)
+    "#,
+    )
     .execute(&pool)
     .await?;
-    
+
     // Create indexes for common queries
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_autodeploy_txs_status ON autodeploy_txs(status)")
         .execute(&pool)
         .await?;
-    
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_autodeploy_txs_manager ON autodeploy_txs(manager_key)")
-        .execute(&pool)
-        .await?;
-    
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_autodeploy_txs_manager ON autodeploy_txs(manager_key)",
+    )
+    .execute(&pool)
+    .await?;
+
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_autodeploy_txs_round ON autodeploy_txs(round_id)")
         .execute(&pool)
         .await?;
-    
+
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_autodeploy_txs_sent_at ON autodeploy_txs(sent_at)")
         .execute(&pool)
         .await?;
-    
+
     Ok(pool)
 }
 
@@ -175,14 +179,16 @@ pub async fn insert_tx(
     last_valid_blockheight: u64,
     sent_at: i64,
 ) -> Result<i64, sqlx::Error> {
-    let result = sqlx::query(r#"
+    let result = sqlx::query(
+        r#"
         INSERT INTO autodeploy_txs (
             signature, manager_key, deployer_key, auth_id, round_id,
             amount_per_square, squares_mask, num_squares, total_deployed,
             deployer_fee, protocol_fee, priority_fee, jito_tip,
             last_valid_blockheight, sent_at, status
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-    "#)
+    "#,
+    )
     .bind(signature)
     .bind(manager_key)
     .bind(deployer_key)
@@ -200,7 +206,7 @@ pub async fn insert_tx(
     .bind(sent_at)
     .execute(pool)
     .await?;
-    
+
     Ok(result.last_insert_rowid())
 }
 
@@ -212,18 +218,20 @@ pub async fn update_tx_confirmed(
     slot: u64,
     compute_units: Option<u64>,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(r#"
+    sqlx::query(
+        r#"
         UPDATE autodeploy_txs 
         SET status = 1, confirmed_at = ?, slot = ?, compute_units_consumed = ?
         WHERE signature = ?
-    "#)
+    "#,
+    )
     .bind(confirmed_at)
     .bind(slot as i64)
     .bind(compute_units.map(|cu| cu as i64))
     .bind(signature)
     .execute(pool)
     .await?;
-    
+
     Ok(())
 }
 
@@ -233,16 +241,18 @@ pub async fn update_tx_finalized(
     signature: &str,
     finalized_at: i64,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(r#"
+    sqlx::query(
+        r#"
         UPDATE autodeploy_txs 
         SET status = 2, finalized_at = ?
         WHERE signature = ?
-    "#)
+    "#,
+    )
     .bind(finalized_at)
     .bind(signature)
     .execute(pool)
     .await?;
-    
+
     Ok(())
 }
 
@@ -252,39 +262,41 @@ pub async fn update_tx_failed(
     signature: &str,
     error_message: &str,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(r#"
+    sqlx::query(
+        r#"
         UPDATE autodeploy_txs 
         SET status = 3, error_message = ?
         WHERE signature = ?
-    "#)
+    "#,
+    )
     .bind(error_message)
     .bind(signature)
     .execute(pool)
     .await?;
-    
+
     Ok(())
 }
 
 /// Update transaction status to expired
-pub async fn update_tx_expired(
-    pool: &Pool<Sqlite>,
-    signature: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(r#"
+pub async fn update_tx_expired(pool: &Pool<Sqlite>, signature: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
         UPDATE autodeploy_txs 
         SET status = 4
         WHERE signature = ?
-    "#)
+    "#,
+    )
     .bind(signature)
     .execute(pool)
     .await?;
-    
+
     Ok(())
 }
 
 /// Get all pending transactions
 pub async fn get_pending_txs(pool: &Pool<Sqlite>) -> Result<Vec<AutodeployTx>, sqlx::Error> {
-    let rows = sqlx::query(r#"
+    let rows = sqlx::query(
+        r#"
         SELECT 
             id, signature, manager_key, deployer_key, auth_id, round_id,
             amount_per_square, squares_mask, num_squares, total_deployed,
@@ -294,44 +306,52 @@ pub async fn get_pending_txs(pool: &Pool<Sqlite>) -> Result<Vec<AutodeployTx>, s
         FROM autodeploy_txs 
         WHERE status = 0
         ORDER BY sent_at ASC
-        "#)
+        "#,
+    )
     .fetch_all(pool)
     .await?;
-    
-    let txs = rows.into_iter().map(|row| {
-        use sqlx::Row;
-        AutodeployTx {
-            id: row.get("id"),
-            signature: row.get("signature"),
-            manager_key: row.get("manager_key"),
-            deployer_key: row.get("deployer_key"),
-            auth_id: row.get("auth_id"),
-            round_id: row.get("round_id"),
-            amount_per_square: row.get("amount_per_square"),
-            squares_mask: row.get("squares_mask"),
-            num_squares: row.get("num_squares"),
-            total_deployed: row.get("total_deployed"),
-            deployer_fee: row.get("deployer_fee"),
-            protocol_fee: row.get("protocol_fee"),
-            priority_fee: row.get("priority_fee"),
-            jito_tip: row.get("jito_tip"),
-            last_valid_blockheight: row.get("last_valid_blockheight"),
-            sent_at: row.get("sent_at"),
-            confirmed_at: row.get("confirmed_at"),
-            finalized_at: row.get("finalized_at"),
-            status: row.get("status"),
-            error_message: row.get("error_message"),
-            compute_units_consumed: row.get("compute_units_consumed"),
-            slot: row.get("slot"),
-        }
-    }).collect();
-    
+
+    let txs = rows
+        .into_iter()
+        .map(|row| {
+            use sqlx::Row;
+            AutodeployTx {
+                id: row.get("id"),
+                signature: row.get("signature"),
+                manager_key: row.get("manager_key"),
+                deployer_key: row.get("deployer_key"),
+                auth_id: row.get("auth_id"),
+                round_id: row.get("round_id"),
+                amount_per_square: row.get("amount_per_square"),
+                squares_mask: row.get("squares_mask"),
+                num_squares: row.get("num_squares"),
+                total_deployed: row.get("total_deployed"),
+                deployer_fee: row.get("deployer_fee"),
+                protocol_fee: row.get("protocol_fee"),
+                priority_fee: row.get("priority_fee"),
+                jito_tip: row.get("jito_tip"),
+                last_valid_blockheight: row.get("last_valid_blockheight"),
+                sent_at: row.get("sent_at"),
+                confirmed_at: row.get("confirmed_at"),
+                finalized_at: row.get("finalized_at"),
+                status: row.get("status"),
+                error_message: row.get("error_message"),
+                compute_units_consumed: row.get("compute_units_consumed"),
+                slot: row.get("slot"),
+            }
+        })
+        .collect();
+
     Ok(txs)
 }
 
 /// Get recent transactions (last N)
-pub async fn get_recent_txs(pool: &Pool<Sqlite>, limit: i32) -> Result<Vec<AutodeployTx>, sqlx::Error> {
-    let rows = sqlx::query(r#"
+pub async fn get_recent_txs(
+    pool: &Pool<Sqlite>,
+    limit: i32,
+) -> Result<Vec<AutodeployTx>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
         SELECT 
             id, signature, manager_key, deployer_key, auth_id, round_id,
             amount_per_square, squares_mask, num_squares, total_deployed,
@@ -341,39 +361,43 @@ pub async fn get_recent_txs(pool: &Pool<Sqlite>, limit: i32) -> Result<Vec<Autod
         FROM autodeploy_txs 
         ORDER BY sent_at DESC
         LIMIT ?
-        "#)
+        "#,
+    )
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    
-    let txs = rows.into_iter().map(|row| {
-        use sqlx::Row;
-        AutodeployTx {
-            id: row.get("id"),
-            signature: row.get("signature"),
-            manager_key: row.get("manager_key"),
-            deployer_key: row.get("deployer_key"),
-            auth_id: row.get("auth_id"),
-            round_id: row.get("round_id"),
-            amount_per_square: row.get("amount_per_square"),
-            squares_mask: row.get("squares_mask"),
-            num_squares: row.get("num_squares"),
-            total_deployed: row.get("total_deployed"),
-            deployer_fee: row.get("deployer_fee"),
-            protocol_fee: row.get("protocol_fee"),
-            priority_fee: row.get("priority_fee"),
-            jito_tip: row.get("jito_tip"),
-            last_valid_blockheight: row.get("last_valid_blockheight"),
-            sent_at: row.get("sent_at"),
-            confirmed_at: row.get("confirmed_at"),
-            finalized_at: row.get("finalized_at"),
-            status: row.get("status"),
-            error_message: row.get("error_message"),
-            compute_units_consumed: row.get("compute_units_consumed"),
-            slot: row.get("slot"),
-        }
-    }).collect();
-    
+
+    let txs = rows
+        .into_iter()
+        .map(|row| {
+            use sqlx::Row;
+            AutodeployTx {
+                id: row.get("id"),
+                signature: row.get("signature"),
+                manager_key: row.get("manager_key"),
+                deployer_key: row.get("deployer_key"),
+                auth_id: row.get("auth_id"),
+                round_id: row.get("round_id"),
+                amount_per_square: row.get("amount_per_square"),
+                squares_mask: row.get("squares_mask"),
+                num_squares: row.get("num_squares"),
+                total_deployed: row.get("total_deployed"),
+                deployer_fee: row.get("deployer_fee"),
+                protocol_fee: row.get("protocol_fee"),
+                priority_fee: row.get("priority_fee"),
+                jito_tip: row.get("jito_tip"),
+                last_valid_blockheight: row.get("last_valid_blockheight"),
+                sent_at: row.get("sent_at"),
+                confirmed_at: row.get("confirmed_at"),
+                finalized_at: row.get("finalized_at"),
+                status: row.get("status"),
+                error_message: row.get("error_message"),
+                compute_units_consumed: row.get("compute_units_consumed"),
+                slot: row.get("slot"),
+            }
+        })
+        .collect();
+
     Ok(txs)
 }
 
@@ -382,7 +406,8 @@ pub async fn get_tx_stats(
     pool: &Pool<Sqlite>,
     since_timestamp: i64,
 ) -> Result<TxStats, sqlx::Error> {
-    let row = sqlx::query(r#"
+    let row = sqlx::query(
+        r#"
         SELECT 
             COUNT(*) as total_count,
             SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) as finalized_count,
@@ -393,18 +418,21 @@ pub async fn get_tx_stats(
             SUM(CASE WHEN status = 2 THEN protocol_fee ELSE 0 END) as total_protocol_fee
         FROM autodeploy_txs 
         WHERE sent_at >= ?
-        "#)
+        "#,
+    )
     .bind(since_timestamp)
     .fetch_one(pool)
     .await?;
-    
+
     use sqlx::Row;
     Ok(TxStats {
         total_count: row.get::<i64, _>("total_count") as u64,
         finalized_count: row.get::<Option<i64>, _>("finalized_count").unwrap_or(0) as u64,
         failed_count: row.get::<Option<i64>, _>("failed_count").unwrap_or(0) as u64,
         expired_count: row.get::<Option<i64>, _>("expired_count").unwrap_or(0) as u64,
-        total_deployed_finalized: row.get::<Option<i64>, _>("total_deployed_finalized").unwrap_or(0) as u64,
+        total_deployed_finalized: row
+            .get::<Option<i64>, _>("total_deployed_finalized")
+            .unwrap_or(0) as u64,
         total_deployer_fee: row.get::<Option<i64>, _>("total_deployer_fee").unwrap_or(0) as u64,
         total_protocol_fee: row.get::<Option<i64>, _>("total_protocol_fee").unwrap_or(0) as u64,
     })

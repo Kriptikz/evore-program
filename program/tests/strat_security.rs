@@ -2,13 +2,13 @@ mod strat_common;
 
 use strat_common::*;
 
-use evore::state::{strategy_deployer_pda, managed_miner_auth_pda};
 use evore::instruction::{
-    create_strat_deployer, update_strat_deployer, mm_strat_autodeploy,
-    mm_strat_full_autodeploy, mm_strat_autocheckpoint, recycle_strat_sol,
+    create_strat_deployer, mm_strat_autocheckpoint, mm_strat_autodeploy, mm_strat_full_autodeploy,
+    recycle_strat_sol, update_strat_deployer,
 };
 use evore::ore_api::miner_pda;
-use solana_sdk::{signature::Keypair, signer::Signer, pubkey::Pubkey};
+use evore::state::{managed_miner_auth_pda, strategy_deployer_pda};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 // ============================================================================
 // Cross-instruction helper: set up a fully initialized StrategyDeployer
@@ -16,11 +16,11 @@ use solana_sdk::{signature::Keypair, signer::Signer, pubkey::Pubkey};
 
 async fn setup_security_env() -> (
     solana_program_test::ProgramTestContext,
-    Keypair,  // authority (manager authority)
-    Keypair,  // deploy_authority
-    Pubkey,   // manager pubkey
-    Pubkey,   // strat_deployer_pda
-    Pubkey,   // managed_miner_auth
+    Keypair, // authority (manager authority)
+    Keypair, // deploy_authority
+    Pubkey,  // manager pubkey
+    Pubkey,  // strat_deployer_pda
+    Pubkey,  // managed_miner_auth
 ) {
     let mut program_test = setup_programs();
     let manager = Keypair::new();
@@ -40,22 +40,49 @@ async fn setup_security_env() -> (
     let mut context = program_test.start_with_context().await;
     let payer = context.payer.insecure_clone();
 
-    let fund_ix = solana_sdk::system_instruction::transfer(&payer.pubkey(), &authority.pubkey(), 2_000_000_000);
-    let fund_ix2 = solana_sdk::system_instruction::transfer(&payer.pubkey(), &deploy_authority.pubkey(), 2_000_000_000);
-    let fund_fc = solana_sdk::system_instruction::transfer(&payer.pubkey(), &evore::consts::FEE_COLLECTOR, 1_000_000_000);
-    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fc], &[&payer]).await.unwrap();
+    let fund_ix = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &authority.pubkey(),
+        2_000_000_000,
+    );
+    let fund_ix2 = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &deploy_authority.pubkey(),
+        2_000_000_000,
+    );
+    let fund_fc = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &evore::consts::FEE_COLLECTOR,
+        1_000_000_000,
+    );
+    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fc], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = create_strat_deployer(
-        authority.pubkey(), manager.pubkey(), deploy_authority.pubkey(),
-        0, 0, 0,
+        authority.pubkey(),
+        manager.pubkey(),
+        deploy_authority.pubkey(),
+        0,
+        0,
+        0,
         2, // Manual
         manual_strategy_data(),
     );
-    send_transaction(&mut context, &[ix], &[&payer, &authority]).await.unwrap();
+    send_transaction(&mut context, &[ix], &[&payer, &authority])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    (context, authority, deploy_authority, manager.pubkey(), sd_pda, mma_pda)
+    (
+        context,
+        authority,
+        deploy_authority,
+        manager.pubkey(),
+        sd_pda,
+        mma_pda,
+    )
 }
 
 // ============================================================================
@@ -69,13 +96,22 @@ async fn test_autodeploy_rejects_non_deploy_authority() {
     let payer = context.payer.insecure_clone();
 
     let attacker = Keypair::new();
-    let fund = solana_sdk::system_instruction::transfer(&payer.pubkey(), &attacker.pubkey(), 1_000_000_000);
-    send_transaction(&mut context, &[fund], &[&payer]).await.unwrap();
+    let fund = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &attacker.pubkey(),
+        1_000_000_000,
+    );
+    send_transaction(&mut context, &[fund], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = mm_strat_autodeploy(attacker.pubkey(), manager, 0, 100_000_000, 1, 0);
     let result = send_transaction(&mut context, &[ix], &[&payer, &attacker]).await;
-    assert!(result.is_err(), "Non-deploy_authority must be rejected for autodeploy");
+    assert!(
+        result.is_err(),
+        "Non-deploy_authority must be rejected for autodeploy"
+    );
 }
 
 // ============================================================================
@@ -89,13 +125,22 @@ async fn test_full_autodeploy_rejects_non_deploy_authority() {
     let payer = context.payer.insecure_clone();
 
     let attacker = Keypair::new();
-    let fund = solana_sdk::system_instruction::transfer(&payer.pubkey(), &attacker.pubkey(), 1_000_000_000);
-    send_transaction(&mut context, &[fund], &[&payer]).await.unwrap();
+    let fund = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &attacker.pubkey(),
+        1_000_000_000,
+    );
+    send_transaction(&mut context, &[fund], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = mm_strat_full_autodeploy(attacker.pubkey(), manager, 0, 100_000_000, 1, 0);
     let result = send_transaction(&mut context, &[ix], &[&payer, &attacker]).await;
-    assert!(result.is_err(), "Non-deploy_authority must be rejected for full autodeploy");
+    assert!(
+        result.is_err(),
+        "Non-deploy_authority must be rejected for full autodeploy"
+    );
 }
 
 // ============================================================================
@@ -109,13 +154,27 @@ async fn test_update_rejects_random_signer() {
     let payer = context.payer.insecure_clone();
 
     let attacker = Keypair::new();
-    let fund = solana_sdk::system_instruction::transfer(&payer.pubkey(), &attacker.pubkey(), 1_000_000_000);
-    send_transaction(&mut context, &[fund], &[&payer]).await.unwrap();
+    let fund = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &attacker.pubkey(),
+        1_000_000_000,
+    );
+    send_transaction(&mut context, &[fund], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = update_strat_deployer(
-        attacker.pubkey(), manager, deploy_authority.pubkey(),
-        0, 0, 0, 0, 0, 2, manual_strategy_data(),
+        attacker.pubkey(),
+        manager,
+        deploy_authority.pubkey(),
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        manual_strategy_data(),
     );
     let result = send_transaction(&mut context, &[ix], &[&payer, &attacker]).await;
     assert!(result.is_err(), "Random signer must be rejected for update");
@@ -132,14 +191,23 @@ async fn test_checkpoint_rejects_non_deploy_authority() {
     let payer = context.payer.insecure_clone();
 
     let attacker = Keypair::new();
-    let fund = solana_sdk::system_instruction::transfer(&payer.pubkey(), &attacker.pubkey(), 1_000_000_000);
-    send_transaction(&mut context, &[fund], &[&payer]).await.unwrap();
+    let fund = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &attacker.pubkey(),
+        1_000_000_000,
+    );
+    send_transaction(&mut context, &[fund], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let (_, bump) = managed_miner_auth_pda(manager, 0);
     let ix = mm_strat_autocheckpoint(attacker.pubkey(), manager, 0, bump);
     let result = send_transaction(&mut context, &[ix], &[&payer, &attacker]).await;
-    assert!(result.is_err(), "Non-deploy_authority must be rejected for checkpoint");
+    assert!(
+        result.is_err(),
+        "Non-deploy_authority must be rejected for checkpoint"
+    );
 }
 
 // ============================================================================
@@ -153,13 +221,22 @@ async fn test_recycle_rejects_non_deploy_authority() {
     let payer = context.payer.insecure_clone();
 
     let attacker = Keypair::new();
-    let fund = solana_sdk::system_instruction::transfer(&payer.pubkey(), &attacker.pubkey(), 1_000_000_000);
-    send_transaction(&mut context, &[fund], &[&payer]).await.unwrap();
+    let fund = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &attacker.pubkey(),
+        1_000_000_000,
+    );
+    send_transaction(&mut context, &[fund], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = recycle_strat_sol(attacker.pubkey(), manager, 0);
     let result = send_transaction(&mut context, &[ix], &[&payer, &attacker]).await;
-    assert!(result.is_err(), "Non-deploy_authority must be rejected for recycle");
+    assert!(
+        result.is_err(),
+        "Non-deploy_authority must be rejected for recycle"
+    );
 }
 
 // ============================================================================
@@ -187,26 +264,46 @@ async fn test_autodeploy_rejects_fee_exceeding_expected() {
         sd_addr,
         manager.pubkey(),
         deploy_authority.pubkey(),
-        200,    // bps_fee = 200 (actual fee)
-        0,      // flat_fee
-        100,    // expected_bps_fee = 100 (max the manager accepts)
-        0,      // expected_flat_fee
-        0,      // max_per_round
-        2,      // Manual
+        200, // bps_fee = 200 (actual fee)
+        0,   // flat_fee
+        100, // expected_bps_fee = 100 (max the manager accepts)
+        0,   // expected_flat_fee
+        0,   // max_per_round
+        2,   // Manual
         manual_strategy_data(),
     );
 
     let mut context = program_test.start_with_context().await;
     let payer = context.payer.insecure_clone();
 
-    let fund = solana_sdk::system_instruction::transfer(&payer.pubkey(), &deploy_authority.pubkey(), 2_000_000_000);
-    let fund_fc = solana_sdk::system_instruction::transfer(&payer.pubkey(), &evore::consts::FEE_COLLECTOR, 1_000_000_000);
-    send_transaction(&mut context, &[fund, fund_fc], &[&payer]).await.unwrap();
+    let fund = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &deploy_authority.pubkey(),
+        2_000_000_000,
+    );
+    let fund_fc = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &evore::consts::FEE_COLLECTOR,
+        1_000_000_000,
+    );
+    send_transaction(&mut context, &[fund, fund_fc], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    let ix = mm_strat_autodeploy(deploy_authority.pubkey(), manager.pubkey(), auth_id, 100_000_000, 1, 0);
+    let ix = mm_strat_autodeploy(
+        deploy_authority.pubkey(),
+        manager.pubkey(),
+        auth_id,
+        100_000_000,
+        1,
+        0,
+    );
     let result = send_transaction(&mut context, &[ix], &[&payer, &deploy_authority]).await;
-    assert!(result.is_err(), "Deploy with bps_fee > expected_bps_fee must be rejected");
+    assert!(
+        result.is_err(),
+        "Deploy with bps_fee > expected_bps_fee must be rejected"
+    );
 }
 
 // ============================================================================
@@ -225,19 +322,40 @@ async fn test_strat_deployer_does_not_affect_regular_deployer() {
     let mut context = program_test.start_with_context().await;
     let payer = context.payer.insecure_clone();
 
-    let fund = solana_sdk::system_instruction::transfer(&payer.pubkey(), &authority.pubkey(), 2_000_000_000);
-    send_transaction(&mut context, &[fund], &[&payer]).await.unwrap();
+    let fund = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &authority.pubkey(),
+        2_000_000_000,
+    );
+    send_transaction(&mut context, &[fund], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     // Create a strat deployer
     let ix = create_strat_deployer(
-        authority.pubkey(), manager.pubkey(), deploy_authority.pubkey(),
-        0, 0, 0, 2, manual_strategy_data(),
+        authority.pubkey(),
+        manager.pubkey(),
+        deploy_authority.pubkey(),
+        0,
+        0,
+        0,
+        2,
+        manual_strategy_data(),
     );
-    send_transaction(&mut context, &[ix], &[&payer, &authority]).await.unwrap();
+    send_transaction(&mut context, &[ix], &[&payer, &authority])
+        .await
+        .unwrap();
 
     // Verify the regular deployer PDA is NOT initialized
     let (deployer_pda, _) = evore::state::deployer_pda(manager.pubkey());
-    let deployer_acct = context.banks_client.get_account(deployer_pda).await.unwrap();
-    assert!(deployer_acct.is_none(), "StrategyDeployer creation must not create a regular Deployer");
+    let deployer_acct = context
+        .banks_client
+        .get_account(deployer_pda)
+        .await
+        .unwrap();
+    assert!(
+        deployer_acct.is_none(),
+        "StrategyDeployer creation must not create a regular Deployer"
+    );
 }

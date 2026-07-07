@@ -23,7 +23,7 @@ pub fn process_transfer_manager(
 
     // 3. Load manager mutably and verify current authority
     let manager = manager_account_info.as_account_mut::<Manager>(&crate::id())?;
-    
+
     if manager.authority != *signer.key {
         return Err(EvoreError::NotAuthorized.into());
     }

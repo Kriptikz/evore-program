@@ -6,13 +6,13 @@ use solana_program::{
 
 use processor::*;
 
-pub mod processor;
+pub mod consts;
+pub mod entropy_api;
 pub mod error;
 pub mod instruction;
-pub mod state;
-pub mod consts;
 pub mod ore_api;
-pub mod entropy_api;
+pub mod processor;
+pub mod state;
 pub mod validation;
 
 declare_id!("8jaLKWLJAj5jVCZbxpe3zRUvLB3LD48MRtaQ2AjfCfxa");
@@ -68,7 +68,9 @@ pub fn process_instruction(
             process_recycle_sol::process_recycle_sol(accounts, data)?;
         }
         Instructions::WithdrawAutodeployBalance => {
-            process_withdraw_autodeploy_balance::process_withdraw_autodeploy_balance(accounts, data)?;
+            process_withdraw_autodeploy_balance::process_withdraw_autodeploy_balance(
+                accounts, data,
+            )?;
         }
         Instructions::MMAutocheckpoint => {
             process_mm_autocheckpoint::process_mm_autocheckpoint(accounts, data)?;

@@ -2,9 +2,9 @@ mod strat_common;
 
 use strat_common::*;
 
-use evore::state::{strategy_deployer_pda, managed_miner_auth_pda};
 use evore::instruction::{create_strat_deployer, mm_strat_autodeploy};
-use solana_sdk::{signature::Keypair, signer::Signer, pubkey::Pubkey};
+use evore::state::{managed_miner_auth_pda, strategy_deployer_pda};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 async fn setup_dsp_test(
     percentage: u64,
@@ -36,22 +36,48 @@ async fn setup_dsp_test(
     let mut context = program_test.start_with_context().await;
     let payer = context.payer.insecure_clone();
 
-    let fund_ix = solana_sdk::system_instruction::transfer(&payer.pubkey(), &authority.pubkey(), 2_000_000_000);
-    let fund_ix2 = solana_sdk::system_instruction::transfer(&payer.pubkey(), &deploy_authority.pubkey(), 2_000_000_000);
-    let fund_fc = solana_sdk::system_instruction::transfer(&payer.pubkey(), &evore::consts::FEE_COLLECTOR, 1_000_000_000);
-    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fc], &[&payer]).await.unwrap();
+    let fund_ix = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &authority.pubkey(),
+        2_000_000_000,
+    );
+    let fund_ix2 = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &deploy_authority.pubkey(),
+        2_000_000_000,
+    );
+    let fund_fc = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &evore::consts::FEE_COLLECTOR,
+        1_000_000_000,
+    );
+    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fc], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = create_strat_deployer(
-        authority.pubkey(), manager.pubkey(), deploy_authority.pubkey(),
-        0, 0, 0,
+        authority.pubkey(),
+        manager.pubkey(),
+        deploy_authority.pubkey(),
+        0,
+        0,
+        0,
         4, // DynamicSplitPercentage
         strategy_data,
     );
-    send_transaction(&mut context, &[ix], &[&payer, &authority]).await.unwrap();
+    send_transaction(&mut context, &[ix], &[&payer, &authority])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    (context, deploy_authority, manager.pubkey(), mma_pda, auth_id)
+    (
+        context,
+        deploy_authority,
+        manager.pubkey(),
+        mma_pda,
+        auth_id,
+    )
 }
 
 #[tokio::test]
@@ -63,11 +89,12 @@ async fn test_dsp_deploys_to_masked_squares() {
 
     let bankroll: u64 = 3_000_000_000;
 
-    let ix = mm_strat_autodeploy(
-        deploy_authority.pubkey(), manager, auth_id,
-        bankroll, 0, 0,
-    );
+    let ix = mm_strat_autodeploy(deploy_authority.pubkey(), manager, auth_id, bankroll, 0, 0);
 
     let result = send_transaction(&mut context, &[ix], &[&payer, &deploy_authority]).await;
-    assert!(result.is_ok(), "DSP autodeploy should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "DSP autodeploy should succeed: {:?}",
+        result.err()
+    );
 }

@@ -2,9 +2,9 @@ mod strat_common;
 
 use strat_common::*;
 
-use evore::state::{strategy_deployer_pda, managed_miner_auth_pda};
 use evore::instruction::{create_strat_deployer, mm_strat_autodeploy};
-use solana_sdk::{signature::Keypair, signer::Signer, pubkey::Pubkey};
+use evore::state::{managed_miner_auth_pda, strategy_deployer_pda};
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 async fn setup_dynev_test(
     max_per_square: u64,
@@ -36,33 +36,59 @@ async fn setup_dynev_test(
     let mut context = program_test.start_with_context().await;
     let payer = context.payer.insecure_clone();
 
-    let fund_ix = solana_sdk::system_instruction::transfer(&payer.pubkey(), &authority.pubkey(), 2_000_000_000);
-    let fund_ix2 = solana_sdk::system_instruction::transfer(&payer.pubkey(), &deploy_authority.pubkey(), 2_000_000_000);
-    let fund_fc = solana_sdk::system_instruction::transfer(&payer.pubkey(), &evore::consts::FEE_COLLECTOR, 1_000_000_000);
-    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fc], &[&payer]).await.unwrap();
+    let fund_ix = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &authority.pubkey(),
+        2_000_000_000,
+    );
+    let fund_ix2 = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &deploy_authority.pubkey(),
+        2_000_000_000,
+    );
+    let fund_fc = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &evore::consts::FEE_COLLECTOR,
+        1_000_000_000,
+    );
+    send_transaction(&mut context, &[fund_ix, fund_ix2, fund_fc], &[&payer])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
     let ix = create_strat_deployer(
-        authority.pubkey(), manager.pubkey(), deploy_authority.pubkey(),
-        0, 0, 0,
+        authority.pubkey(),
+        manager.pubkey(),
+        deploy_authority.pubkey(),
+        0,
+        0,
+        0,
         5, // DynamicEv
         strategy_data,
     );
-    send_transaction(&mut context, &[ix], &[&payer, &authority]).await.unwrap();
+    send_transaction(&mut context, &[ix], &[&payer, &authority])
+        .await
+        .unwrap();
     context.last_blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
 
-    (context, deploy_authority, manager.pubkey(), mma_pda, auth_id)
+    (
+        context,
+        deploy_authority,
+        manager.pubkey(),
+        mma_pda,
+        auth_id,
+    )
 }
 
 #[tokio::test]
 async fn test_dynev_deploys_with_instruction_ore_value() {
-    let (mut context, deploy_authority, manager, _, auth_id) =
-        setup_dynev_test(
-            500_000_000,  // max 0.5 SOL per square
-            1_000_000,    // min bet 0.001 SOL
-            500,          // slots_left
-            5_000_000_000, // max 5 SOL ore value
-        ).await;
+    let (mut context, deploy_authority, manager, _, auth_id) = setup_dynev_test(
+        500_000_000,   // max 0.5 SOL per square
+        1_000_000,     // min bet 0.001 SOL
+        500,           // slots_left
+        5_000_000_000, // max 5 SOL ore value
+    )
+    .await;
     let payer = context.payer.insecure_clone();
 
     // DynEV: amount = bankroll, squares_mask:extra = ore_value as u64
@@ -73,25 +99,31 @@ async fn test_dynev_deploys_with_instruction_ore_value() {
     let ore_value_high = ((ore_value >> 32) & 0xFFFFFFFF) as u32;
 
     let ix = mm_strat_autodeploy(
-        deploy_authority.pubkey(), manager, auth_id,
+        deploy_authority.pubkey(),
+        manager,
+        auth_id,
         bankroll,
         ore_value_low,
         ore_value_high,
     );
 
     let result = send_transaction(&mut context, &[ix], &[&payer, &deploy_authority]).await;
-    assert!(result.is_ok(), "DynEV autodeploy should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "DynEV autodeploy should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[tokio::test]
 async fn test_dynev_rejects_ore_value_above_max() {
-    let (mut context, deploy_authority, manager, _, auth_id) =
-        setup_dynev_test(
-            500_000_000,
-            1_000_000,
-            500,
-            1_000_000_000, // max 1 SOL ore value
-        ).await;
+    let (mut context, deploy_authority, manager, _, auth_id) = setup_dynev_test(
+        500_000_000,
+        1_000_000,
+        500,
+        1_000_000_000, // max 1 SOL ore value
+    )
+    .await;
     let payer = context.payer.insecure_clone();
 
     // Try to pass ore_value = 2 SOL > max 1 SOL
@@ -100,7 +132,9 @@ async fn test_dynev_rejects_ore_value_above_max() {
     let ore_value_high = ((ore_value >> 32) & 0xFFFFFFFF) as u32;
 
     let ix = mm_strat_autodeploy(
-        deploy_authority.pubkey(), manager, auth_id,
+        deploy_authority.pubkey(),
+        manager,
+        auth_id,
         3_000_000_000,
         ore_value_low,
         ore_value_high,
