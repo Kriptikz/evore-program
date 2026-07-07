@@ -280,6 +280,7 @@ function splitDeployInstruction(
 function mmCheckpointInstruction(signer, manager, roundId, authId = 0n) {
   const [managedMinerAuth, bump] = getManagedMinerAuthPda(manager, authId);
   const [oreMiner] = getOreMinerPda(managedMinerAuth);
+  const [oreAutomation] = getOreAutomationPda(managedMinerAuth);
   const [oreBoard] = getOreBoardPda();
   const [oreRound] = getOreRoundPda(roundId);
   
@@ -300,6 +301,7 @@ function mmCheckpointInstruction(signer, manager, roundId, authId = 0n) {
       { pubkey: oreRound, isSigner: false, isWritable: true },
       { pubkey: SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: ORE_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: oreAutomation, isSigner: false, isWritable: true },
     ],
     data,
   });
@@ -605,6 +607,7 @@ function mmAutocheckpointInstruction(signer, manager, roundId, authId) {
   const [deployerPda] = getDeployerPda(manager);
   const [managedMinerAuth, bump] = getManagedMinerAuthPda(manager, authId);
   const [oreMiner] = getOreMinerPda(managedMinerAuth);
+  const [oreAutomation] = getOreAutomationPda(managedMinerAuth);
   const [oreBoard] = getOreBoardPda();
   const [oreRound] = getOreRoundPda(roundId);
 
@@ -626,6 +629,7 @@ function mmAutocheckpointInstruction(signer, manager, roundId, authId) {
       { pubkey: oreRound, isSigner: false, isWritable: true },        // 7: round
       { pubkey: SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false }, // 8: system_program
       { pubkey: ORE_PROGRAM_ID, isSigner: false, isWritable: false }, // 9: ore_program
+      { pubkey: oreAutomation, isSigner: false, isWritable: true },   // 10: automation (optional checkpoint v2)
     ],
     data,
   });

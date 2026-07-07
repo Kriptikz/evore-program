@@ -22,19 +22,50 @@ pub fn process_mm_autocheckpoint(
     let args = MMAutocheckpoint::try_from_bytes(instruction_data)?;
     let auth_id = u64::from_le_bytes(args.auth_id);
 
-    let [
-        signer,                            // 0: deploy_authority (signer)
-        manager_account_info,              // 1: manager
-        deployer_account_info,             // 2: deployer PDA
-        managed_miner_auth_account_info,   // 3: managed_miner_auth PDA
-        ore_miner_account_info,            // 4: ore_miner
-        treasury_account_info,             // 5: treasury
-        board_account_info,                // 6: board
-        round_account_info,                // 7: round
-        system_program_info,               // 8: system_program
-        ore_program,                       // 9: ore_program
-    ] = accounts else {
-        return Err(ProgramError::NotEnoughAccountKeys);
+    let (
+        signer,
+        manager_account_info,
+        deployer_account_info,
+        managed_miner_auth_account_info,
+        ore_miner_account_info,
+        treasury_account_info,
+        board_account_info,
+        round_account_info,
+        system_program_info,
+        ore_program,
+        automation_account_info,
+    ) = match accounts {
+        [signer, manager_account_info, deployer_account_info, managed_miner_auth_account_info, ore_miner_account_info, treasury_account_info, board_account_info, round_account_info, system_program_info, ore_program] => {
+            (
+                signer,
+                manager_account_info,
+                deployer_account_info,
+                managed_miner_auth_account_info,
+                ore_miner_account_info,
+                treasury_account_info,
+                board_account_info,
+                round_account_info,
+                system_program_info,
+                ore_program,
+                None,
+            )
+        }
+        [signer, manager_account_info, deployer_account_info, managed_miner_auth_account_info, ore_miner_account_info, treasury_account_info, board_account_info, round_account_info, system_program_info, ore_program, automation_account_info] => {
+            (
+                signer,
+                manager_account_info,
+                deployer_account_info,
+                managed_miner_auth_account_info,
+                ore_miner_account_info,
+                treasury_account_info,
+                board_account_info,
+                round_account_info,
+                system_program_info,
+                ore_program,
+                Some(automation_account_info),
+            )
+        }
+        _ => return Err(ProgramError::NotEnoughAccountKeys),
     };
 
     // Basic validations
@@ -97,17 +128,6 @@ pub fn process_mm_autocheckpoint(
         return Err(EvoreError::InvalidPDA.into());
     }
 
-    // Build checkpoint CPI accounts
-    let checkpoint_accounts = vec![
-        managed_miner_auth_account_info.clone(),
-        board_account_info.clone(),
-        ore_miner_account_info.clone(),
-        round_account_info.clone(),
-        treasury_account_info.clone(),
-        system_program_info.clone(),
-        ore_program.clone(),
-    ];
-
     let managed_miner_auth_key = *managed_miner_auth_account_info.key;
 
     let checkpoint_round_id = if ore_miner_account_info.data_is_empty() {
@@ -117,13 +137,56 @@ pub fn process_mm_autocheckpoint(
         ore_miner.round_id()
     };
 
+    let (checkpoint_instruction, checkpoint_accounts) =
+        if let Some(automation_account_info) = automation_account_info {
+            automation_account_info.has_seeds(
+                &[
+                    ore_api::AUTOMATION,
+                    managed_miner_auth_account_info.key.as_ref(),
+                ],
+                &ore_api::id(),
+            )?;
+
+            (
+                ore_api::checkpoint_v2(
+                    managed_miner_auth_key,
+                    managed_miner_auth_key,
+                    checkpoint_round_id,
+                ),
+                vec![
+                    managed_miner_auth_account_info.clone(),
+                    managed_miner_auth_account_info.clone(),
+                    automation_account_info.clone(),
+                    board_account_info.clone(),
+                    ore_miner_account_info.clone(),
+                    round_account_info.clone(),
+                    treasury_account_info.clone(),
+                    system_program_info.clone(),
+                    ore_program.clone(),
+                ],
+            )
+        } else {
+            (
+                ore_api::checkpoint(
+                    managed_miner_auth_key,
+                    managed_miner_auth_key,
+                    checkpoint_round_id,
+                ),
+                vec![
+                    managed_miner_auth_account_info.clone(),
+                    board_account_info.clone(),
+                    ore_miner_account_info.clone(),
+                    round_account_info.clone(),
+                    treasury_account_info.clone(),
+                    system_program_info.clone(),
+                    ore_program.clone(),
+                ],
+            )
+        };
+
     // Call ORE checkpoint CPI
     solana_program::program::invoke_signed(
-        &ore_api::checkpoint(
-            managed_miner_auth_key,
-            managed_miner_auth_key,
-            checkpoint_round_id,
-        ),
+        &checkpoint_instruction,
         &checkpoint_accounts,
         &[&[
             MANAGED_MINER_AUTH,

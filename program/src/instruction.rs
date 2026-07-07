@@ -1,7 +1,12 @@
 use spl_associated_token_account::get_associated_token_address;
 use steel::*;
 
-use crate::{consts::FEE_COLLECTOR, entropy_api, ore_api::{self, automation_pda, board_pda, config_pda, miner_pda, round_pda, treasury_pda}, state::{managed_miner_auth_pda, deployer_pda, strategy_deployer_pda}};
+use crate::{
+    consts::FEE_COLLECTOR,
+    entropy_api,
+    ore_api::{self, automation_pda, board_pda, config_pda, miner_pda, round_pda, treasury_pda},
+    state::{deployer_pda, managed_miner_auth_pda, strategy_deployer_pda},
+};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, TryFromPrimitive)]
@@ -40,21 +45,21 @@ pub enum DeployStrategy {
         min_bet: u64,
         ore_value: u64,
         slots_left: u64,
-        attempts: u64,  // Attempt counter - makes each tx unique for same blockhash
+        attempts: u64, // Attempt counter - makes each tx unique for same blockhash
     },
     /// Percentage-based: deploy to own X% of each square across Y squares
     Percentage {
         bankroll: u64,
-        percentage: u64,      // In basis points (1000 = 10%)
-        squares_count: u64,   // Number of squares (1-25)
+        percentage: u64,    // In basis points (1000 = 10%)
+        squares_count: u64, // Number of squares (1-25)
     },
     /// Manual: specify exact amounts for each of the 25 squares
     Manual {
-        amounts: [u64; 25],   // Amount to deploy on each square (0 = skip)
+        amounts: [u64; 25], // Amount to deploy on each square (0 = skip)
     },
     /// Split: deploy total amount equally across all 25 squares in one CPI call
     Split {
-        amount: u64,          // Total amount to split across 25 squares
+        amount: u64, // Total amount to split across 25 squares
     },
 }
 
@@ -109,7 +114,7 @@ pub fn transfer_manager(signer: Pubkey, manager: Pubkey, new_authority: Pubkey) 
 }
 
 /// On-chain MMDeploy instruction data (Pod/Zeroable)
-/// 
+///
 /// Layout (272 bytes total):
 /// - auth_id: [u8; 8] - Manager auth ID
 /// - bump: u8 - PDA bump
@@ -152,9 +157,16 @@ impl MMDeploy {
     /// Create MMDeploy instruction data from auth_id, bump, allow_multi_deploy, and strategy enum
     pub fn new(auth_id: u64, bump: u8, allow_multi_deploy: bool, strategy: DeployStrategy) -> Self {
         let mut data = [0u8; 256];
-        
+
         match strategy {
-            DeployStrategy::EV { bankroll, max_per_square, min_bet, ore_value, slots_left, attempts } => {
+            DeployStrategy::EV {
+                bankroll,
+                max_per_square,
+                min_bet,
+                ore_value,
+                slots_left,
+                attempts,
+            } => {
                 data[0] = 0; // EV strategy
                 data[1..9].copy_from_slice(&bankroll.to_le_bytes());
                 data[9..17].copy_from_slice(&max_per_square.to_le_bytes());
@@ -162,13 +174,17 @@ impl MMDeploy {
                 data[25..33].copy_from_slice(&ore_value.to_le_bytes());
                 data[33..41].copy_from_slice(&slots_left.to_le_bytes());
                 data[41..49].copy_from_slice(&attempts.to_le_bytes());
-            },
-            DeployStrategy::Percentage { bankroll, percentage, squares_count } => {
+            }
+            DeployStrategy::Percentage {
+                bankroll,
+                percentage,
+                squares_count,
+            } => {
                 data[0] = 1; // Percentage strategy
                 data[1..9].copy_from_slice(&bankroll.to_le_bytes());
                 data[9..17].copy_from_slice(&percentage.to_le_bytes());
                 data[17..25].copy_from_slice(&squares_count.to_le_bytes());
-            },
+            }
             DeployStrategy::Manual { amounts } => {
                 data[0] = 2; // Manual strategy
                 for (i, amount) in amounts.iter().enumerate() {
@@ -176,13 +192,13 @@ impl MMDeploy {
                     let end = start + 8;
                     data[start..end].copy_from_slice(&amount.to_le_bytes());
                 }
-            },
+            }
             DeployStrategy::Split { amount } => {
                 data[0] = 3; // Split strategy
                 data[1..9].copy_from_slice(&amount.to_le_bytes());
-            },
+            }
         }
-        
+
         Self {
             auth_id: auth_id.to_le_bytes(),
             bump,
@@ -195,24 +211,38 @@ impl MMDeploy {
     /// Parse the strategy from the instruction data
     pub fn get_strategy(&self) -> Result<DeployStrategy, ()> {
         let strategy = self.data[0];
-        
+
         match strategy {
-            0 => { // EV
+            0 => {
+                // EV
                 let bankroll = u64::from_le_bytes(self.data[1..9].try_into().unwrap());
                 let max_per_square = u64::from_le_bytes(self.data[9..17].try_into().unwrap());
                 let min_bet = u64::from_le_bytes(self.data[17..25].try_into().unwrap());
                 let ore_value = u64::from_le_bytes(self.data[25..33].try_into().unwrap());
                 let slots_left = u64::from_le_bytes(self.data[33..41].try_into().unwrap());
                 let attempts = u64::from_le_bytes(self.data[41..49].try_into().unwrap());
-                Ok(DeployStrategy::EV { bankroll, max_per_square, min_bet, ore_value, slots_left, attempts })
-            },
-            1 => { // Percentage
+                Ok(DeployStrategy::EV {
+                    bankroll,
+                    max_per_square,
+                    min_bet,
+                    ore_value,
+                    slots_left,
+                    attempts,
+                })
+            }
+            1 => {
+                // Percentage
                 let bankroll = u64::from_le_bytes(self.data[1..9].try_into().unwrap());
                 let percentage = u64::from_le_bytes(self.data[9..17].try_into().unwrap());
                 let squares_count = u64::from_le_bytes(self.data[17..25].try_into().unwrap());
-                Ok(DeployStrategy::Percentage { bankroll, percentage, squares_count })
-            },
-            2 => { // Manual
+                Ok(DeployStrategy::Percentage {
+                    bankroll,
+                    percentage,
+                    squares_count,
+                })
+            }
+            2 => {
+                // Manual
                 let mut amounts = [0u64; 25];
                 for i in 0..25 {
                     let start = 1 + i * 8;
@@ -220,11 +250,12 @@ impl MMDeploy {
                     amounts[i] = u64::from_le_bytes(self.data[start..end].try_into().unwrap());
                 }
                 Ok(DeployStrategy::Manual { amounts })
-            },
-            3 => { // Split
+            }
+            3 => {
+                // Split
                 let amount = u64::from_le_bytes(self.data[1..9].try_into().unwrap());
                 Ok(DeployStrategy::Split { amount })
-            },
+            }
             _ => Err(()),
         }
     }
@@ -286,7 +317,7 @@ pub fn ev_deploy(
     allow_multi_deploy: bool,
 ) -> Instruction {
     let (accounts, bump) = build_deploy_accounts(signer, manager, auth_id, round_id);
-    
+
     let strategy = DeployStrategy::EV {
         bankroll,
         max_per_square,
@@ -310,12 +341,12 @@ pub fn percentage_deploy(
     auth_id: u64,
     round_id: u64,
     bankroll: u64,
-    percentage: u64,      // In basis points (1000 = 10%)
-    squares_count: u64,   // Number of squares (1-25)
+    percentage: u64,    // In basis points (1000 = 10%)
+    squares_count: u64, // Number of squares (1-25)
     allow_multi_deploy: bool,
 ) -> Instruction {
     let (accounts, bump) = build_deploy_accounts(signer, manager, auth_id, round_id);
-    
+
     let strategy = DeployStrategy::Percentage {
         bankroll,
         percentage,
@@ -335,11 +366,11 @@ pub fn manual_deploy(
     manager: Pubkey,
     auth_id: u64,
     round_id: u64,
-    amounts: [u64; 25],   // Amount to deploy on each square (0 = skip)
+    amounts: [u64; 25], // Amount to deploy on each square (0 = skip)
     allow_multi_deploy: bool,
 ) -> Instruction {
     let (accounts, bump) = build_deploy_accounts(signer, manager, auth_id, round_id);
-    
+
     let strategy = DeployStrategy::Manual { amounts };
 
     Instruction {
@@ -355,11 +386,11 @@ pub fn split_deploy(
     manager: Pubkey,
     auth_id: u64,
     round_id: u64,
-    amount: u64,          // Total amount to split across 25 squares
+    amount: u64, // Total amount to split across 25 squares
     allow_multi_deploy: bool,
 ) -> Instruction {
     let (accounts, bump) = build_deploy_accounts(signer, manager, auth_id, round_id);
-    
+
     let strategy = DeployStrategy::Split { amount };
 
     Instruction {
@@ -381,6 +412,7 @@ instruction!(Instructions, MMCheckpoint);
 pub fn mm_checkpoint(signer: Pubkey, manager: Pubkey, round_id: u64, auth_id: u64) -> Instruction {
     let (managed_miner_auth_address, bump) = managed_miner_auth_pda(manager, auth_id);
     let ore_miner_address = miner_pda(managed_miner_auth_address);
+    let automation_address = automation_pda(managed_miner_auth_address).0;
     let treasury_address = ore_api::TREASURY_ADDRESS;
 
     let board_address = board_pda();
@@ -398,11 +430,13 @@ pub fn mm_checkpoint(signer: Pubkey, manager: Pubkey, round_id: u64, auth_id: u6
             AccountMeta::new(round_address.0, false),
             AccountMeta::new_readonly(system_program::id(), false),
             AccountMeta::new_readonly(ore_api::id(), false),
+            AccountMeta::new(automation_address, false),
         ],
         data: MMCheckpoint {
             auth_id: auth_id.to_le_bytes(),
             bump,
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -434,7 +468,8 @@ pub fn mm_claim_sol(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instructio
         data: MMClaimSOL {
             auth_id: auth_id.to_le_bytes(),
             bump,
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -452,8 +487,10 @@ pub fn mm_claim_ore(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instructio
     let ore_miner_address = miner_pda(managed_miner_auth_address);
     let board_address = board_pda().0;
     let treasury_address = treasury_pda().0;
-    let treasury_tokens_address = get_associated_token_address(&treasury_address, &ore_api::MINT_ADDRESS);
-    let recipient_address = get_associated_token_address(&managed_miner_auth_address, &ore_api::MINT_ADDRESS);
+    let treasury_tokens_address =
+        get_associated_token_address(&treasury_address, &ore_api::MINT_ADDRESS);
+    let recipient_address =
+        get_associated_token_address(&managed_miner_auth_address, &ore_api::MINT_ADDRESS);
     let signer_recipient_address = get_associated_token_address(&signer, &ore_api::MINT_ADDRESS);
 
     Instruction {
@@ -477,7 +514,8 @@ pub fn mm_claim_ore(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instructio
         data: MMClaimORE {
             auth_id: auth_id.to_le_bytes(),
             bump,
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -529,7 +567,8 @@ pub fn create_deployer(
             bps_fee: bps_fee.to_le_bytes(),
             flat_fee: flat_fee.to_le_bytes(),
             max_per_round: max_per_round.to_le_bytes(),
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -586,7 +625,8 @@ pub fn update_deployer(
             expected_bps_fee: new_expected_bps_fee.to_le_bytes(),
             expected_flat_fee: new_expected_flat_fee.to_le_bytes(),
             max_per_round: new_max_per_round.to_le_bytes(),
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -626,20 +666,20 @@ fn build_autodeploy_accounts(
     let entropy_var_address = entropy_api::var_pda(board_address, 0).0;
 
     vec![
-        AccountMeta::new(signer, true),                           // 0: deploy_authority (signer)
-        AccountMeta::new(manager, false),                         // 1: manager
-        AccountMeta::new(deployer_address, false),                // 2: deployer PDA
-        AccountMeta::new(managed_miner_auth_address, false),      // 3: managed_miner_auth PDA (funds source)
-        AccountMeta::new(ore_miner_address.0, false),             // 4: ore_miner
-        AccountMeta::new(FEE_COLLECTOR, false),                   // 5: fee_collector
-        AccountMeta::new(automation_address, false),              // 6: automation
-        AccountMeta::new(config_address, false),                  // 7: config
-        AccountMeta::new(board_address, false),                   // 8: board
-        AccountMeta::new(round_address, false),                   // 9: round
-        AccountMeta::new(entropy_var_address, false),             // 10: entropy_var
-        AccountMeta::new_readonly(ore_api::id(), false),          // 11: ore_program
-        AccountMeta::new_readonly(entropy_api::id(), false),      // 12: entropy_program
-        AccountMeta::new_readonly(system_program::id(), false),   // 13: system_program
+        AccountMeta::new(signer, true),   // 0: deploy_authority (signer)
+        AccountMeta::new(manager, false), // 1: manager
+        AccountMeta::new(deployer_address, false), // 2: deployer PDA
+        AccountMeta::new(managed_miner_auth_address, false), // 3: managed_miner_auth PDA (funds source)
+        AccountMeta::new(ore_miner_address.0, false),        // 4: ore_miner
+        AccountMeta::new(FEE_COLLECTOR, false),              // 5: fee_collector
+        AccountMeta::new(automation_address, false),         // 6: automation
+        AccountMeta::new(config_address, false),             // 7: config
+        AccountMeta::new(board_address, false),              // 8: board
+        AccountMeta::new(round_address, false),              // 9: round
+        AccountMeta::new(entropy_var_address, false),        // 10: entropy_var
+        AccountMeta::new_readonly(ore_api::id(), false),     // 11: ore_program
+        AccountMeta::new_readonly(entropy_api::id(), false), // 12: entropy_program
+        AccountMeta::new_readonly(system_program::id(), false), // 13: system_program
     ]
 }
 
@@ -663,7 +703,8 @@ pub fn mm_autodeploy(
             amount: amount.to_le_bytes(),
             squares_mask: squares_mask.to_le_bytes(),
             _pad: [0; 4],
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -697,15 +738,16 @@ pub fn deposit_autodeploy_balance(
     Instruction {
         program_id: crate::id(),
         accounts: vec![
-            AccountMeta::new(signer, true),                      // 0: signer (manager authority)
-            AccountMeta::new(manager, false),                    // 1: manager
+            AccountMeta::new(signer, true),   // 0: signer (manager authority)
+            AccountMeta::new(manager, false), // 1: manager
             AccountMeta::new(managed_miner_auth_address, false), // 2: managed_miner_auth PDA
             AccountMeta::new_readonly(system_program::id(), false), // 3: system_program
         ],
         data: DepositAutodeployBalance {
             auth_id: auth_id.to_le_bytes(),
             amount: amount.to_le_bytes(),
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -722,11 +764,7 @@ instruction!(Instructions, RecycleSol);
 
 /// Recycle SOL from a miner account (claim SOL rewards, stays in managed_miner_auth)
 /// Can be called by deploy_authority
-pub fn recycle_sol(
-    signer: Pubkey,
-    manager: Pubkey,
-    auth_id: u64,
-) -> Instruction {
+pub fn recycle_sol(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instruction {
     let (managed_miner_auth_address, _) = managed_miner_auth_pda(manager, auth_id);
     let ore_miner_address = miner_pda(managed_miner_auth_address);
     let (deployer_address, _) = deployer_pda(manager);
@@ -735,18 +773,19 @@ pub fn recycle_sol(
     Instruction {
         program_id: crate::id(),
         accounts: vec![
-            AccountMeta::new(signer, true),                      // 0: signer (deploy_authority)
-            AccountMeta::new(manager, false),                    // 1: manager
-            AccountMeta::new(deployer_address, false),           // 2: deployer PDA
+            AccountMeta::new(signer, true),   // 0: signer (deploy_authority)
+            AccountMeta::new(manager, false), // 1: manager
+            AccountMeta::new(deployer_address, false), // 2: deployer PDA
             AccountMeta::new(managed_miner_auth_address, false), // 3: managed_miner_auth PDA
-            AccountMeta::new(ore_miner_address.0, false),        // 4: ore_miner
-            AccountMeta::new(board_address, false),              // 5: board
+            AccountMeta::new(ore_miner_address.0, false), // 4: ore_miner
+            AccountMeta::new(board_address, false), // 5: board
             AccountMeta::new_readonly(system_program::id(), false), // 6: system
-            AccountMeta::new_readonly(ore_api::id(), false),     // 7: ore_program
+            AccountMeta::new_readonly(ore_api::id(), false), // 7: ore_program
         ],
         data: RecycleSol {
             auth_id: auth_id.to_le_bytes(),
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -776,15 +815,16 @@ pub fn withdraw_autodeploy_balance(
     Instruction {
         program_id: crate::id(),
         accounts: vec![
-            AccountMeta::new(signer, true),                      // 0: signer (manager authority, also recipient)
-            AccountMeta::new(manager, false),                    // 1: manager
+            AccountMeta::new(signer, true), // 0: signer (manager authority, also recipient)
+            AccountMeta::new(manager, false), // 1: manager
             AccountMeta::new(managed_miner_auth_address, false), // 2: managed_miner_auth PDA
             AccountMeta::new_readonly(system_program::id(), false), // 3: system_program
         ],
         data: WithdrawAutodeployBalance {
             auth_id: auth_id.to_le_bytes(),
             amount: amount.to_le_bytes(),
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -802,7 +842,7 @@ pub struct MMAutocheckpoint {
 instruction!(Instructions, MMAutocheckpoint);
 
 /// Create an MMAutocheckpoint instruction
-/// 
+///
 /// Similar to MMCheckpoint but can be called by deploy_authority instead of manager authority.
 /// This allows the autodeploy crank to checkpoint before deploying.
 pub fn mm_autocheckpoint(
@@ -814,6 +854,7 @@ pub fn mm_autocheckpoint(
     let (deployer_address, _) = deployer_pda(manager);
     let (managed_miner_auth_address, bump) = managed_miner_auth_pda(manager, auth_id);
     let ore_miner_address = miner_pda(managed_miner_auth_address);
+    let automation_address = automation_pda(managed_miner_auth_address).0;
     let treasury_address = ore_api::TREASURY_ADDRESS;
     let board_address = board_pda();
     let round_address = round_pda(round_id);
@@ -821,21 +862,23 @@ pub fn mm_autocheckpoint(
     Instruction {
         program_id: crate::id(),
         accounts: vec![
-            AccountMeta::new(signer, true),                           // 0: deploy_authority (signer)
-            AccountMeta::new(manager, false),                         // 1: manager
-            AccountMeta::new(deployer_address, false),                // 2: deployer PDA
-            AccountMeta::new(managed_miner_auth_address, false),      // 3: managed_miner_auth PDA
-            AccountMeta::new(ore_miner_address.0, false),             // 4: ore_miner
-            AccountMeta::new(treasury_address, false),                // 5: treasury
-            AccountMeta::new(board_address.0, false),                 // 6: board
-            AccountMeta::new(round_address.0, false),                 // 7: round
-            AccountMeta::new_readonly(system_program::id(), false),   // 8: system_program
-            AccountMeta::new_readonly(ore_api::id(), false),          // 9: ore_program
+            AccountMeta::new(signer, true),   // 0: deploy_authority (signer)
+            AccountMeta::new(manager, false), // 1: manager
+            AccountMeta::new(deployer_address, false), // 2: deployer PDA
+            AccountMeta::new(managed_miner_auth_address, false), // 3: managed_miner_auth PDA
+            AccountMeta::new(ore_miner_address.0, false), // 4: ore_miner
+            AccountMeta::new(treasury_address, false), // 5: treasury
+            AccountMeta::new(board_address.0, false), // 6: board
+            AccountMeta::new(round_address.0, false), // 7: round
+            AccountMeta::new_readonly(system_program::id(), false), // 8: system_program
+            AccountMeta::new_readonly(ore_api::id(), false), // 9: ore_program
+            AccountMeta::new(automation_address, false), // 10: automation (optional checkpoint v2)
         ],
         data: MMAutocheckpoint {
             auth_id: auth_id.to_le_bytes(),
             bump,
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -884,34 +927,34 @@ fn build_full_autodeploy_accounts(
     let entropy_var_address = entropy_api::var_pda(board_address, 0).0;
 
     vec![
-        AccountMeta::new(signer, true),                           // 0: deploy_authority (signer)
-        AccountMeta::new(manager, false),                         // 1: manager
-        AccountMeta::new(deployer_address, false),                // 2: deployer PDA
-        AccountMeta::new(managed_miner_auth_address, false),      // 3: managed_miner_auth PDA (funds source)
-        AccountMeta::new(ore_miner_address.0, false),             // 4: ore_miner
-        AccountMeta::new(FEE_COLLECTOR, false),                   // 5: fee_collector
-        AccountMeta::new(automation_address, false),              // 6: automation
-        AccountMeta::new(config_address, false),                  // 7: config
-        AccountMeta::new(board_address, false),                   // 8: board
-        AccountMeta::new(round_address, false),                   // 9: round (current round for deploy)
-        AccountMeta::new(checkpoint_round_address, false),        // 10: checkpoint_round (for checkpoint CPI)
-        AccountMeta::new(treasury_address, false),                // 11: treasury (for checkpoint)
-        AccountMeta::new(entropy_var_address, false),             // 12: entropy_var
-        AccountMeta::new_readonly(ore_api::id(), false),          // 13: ore_program
-        AccountMeta::new_readonly(entropy_api::id(), false),      // 14: entropy_program
-        AccountMeta::new_readonly(system_program::id(), false),   // 15: system_program
+        AccountMeta::new(signer, true),   // 0: deploy_authority (signer)
+        AccountMeta::new(manager, false), // 1: manager
+        AccountMeta::new(deployer_address, false), // 2: deployer PDA
+        AccountMeta::new(managed_miner_auth_address, false), // 3: managed_miner_auth PDA (funds source)
+        AccountMeta::new(ore_miner_address.0, false),        // 4: ore_miner
+        AccountMeta::new(FEE_COLLECTOR, false),              // 5: fee_collector
+        AccountMeta::new(automation_address, false),         // 6: automation
+        AccountMeta::new(config_address, false),             // 7: config
+        AccountMeta::new(board_address, false),              // 8: board
+        AccountMeta::new(round_address, false),              // 9: round (current round for deploy)
+        AccountMeta::new(checkpoint_round_address, false), // 10: checkpoint_round (for checkpoint CPI)
+        AccountMeta::new(treasury_address, false),         // 11: treasury (for checkpoint)
+        AccountMeta::new(entropy_var_address, false),      // 12: entropy_var
+        AccountMeta::new_readonly(ore_api::id(), false),   // 13: ore_program
+        AccountMeta::new_readonly(entropy_api::id(), false), // 14: entropy_program
+        AccountMeta::new_readonly(system_program::id(), false), // 15: system_program
     ]
 }
 
 /// Combined checkpoint + recycle + deploy in one instruction
-/// 
+///
 /// This instruction:
 /// 1. Checks if checkpoint is needed, does it using checkpoint_round
 /// 2. Checks if recycle is needed, does it inline
 /// 3. Deploys to the specified squares using current round
-/// 
+///
 /// Uses find_program_address for PDA validation, reads fees directly from Deployer account.
-/// 
+///
 /// Args:
 /// - auth_id: Auth ID for the managed miner
 /// - round_id: Current round ID for deploying
@@ -925,7 +968,8 @@ pub fn mm_full_autodeploy(
     amount: u64,
     squares_mask: u32,
 ) -> Instruction {
-    let accounts = build_full_autodeploy_accounts(signer, manager, auth_id, round_id, checkpoint_round_id);
+    let accounts =
+        build_full_autodeploy_accounts(signer, manager, auth_id, round_id, checkpoint_round_id);
 
     Instruction {
         program_id: crate::id(),
@@ -935,7 +979,8 @@ pub fn mm_full_autodeploy(
             amount: amount.to_le_bytes(),
             squares_mask: squares_mask.to_le_bytes(),
             _pad: [0; 4],
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -958,7 +1003,7 @@ instruction!(Instructions, MMCreateMiner);
 /// This CPIs to ORE's automate instruction twice:
 /// 1. First with executor = signer (opens automation, creates miner)
 /// 2. Second with executor = Pubkey::default() (closes automation)
-/// 
+///
 /// Note: executor_2 = Pubkey::default() = system_program::id()
 /// We use readonly for executor_2 to avoid privilege conflicts with system_program.
 /// ORE doesn't actually check that executor is writable.
@@ -983,7 +1028,11 @@ pub fn mm_create_miner(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instruc
             AccountMeta::new_readonly(system_program::id(), false),
             AccountMeta::new_readonly(ore_api::id(), false),
         ],
-        data: MMCreateMiner { auth_id: auth_id.to_le_bytes(), bump }.to_bytes(),
+        data: MMCreateMiner {
+            auth_id: auth_id.to_le_bytes(),
+            bump,
+        }
+        .to_bytes(),
     }
 }
 
@@ -1026,7 +1075,8 @@ pub fn withdraw_tokens(signer: Pubkey, manager: Pubkey, auth_id: u64, mint: Pubk
         data: WithdrawTokens {
             auth_id: auth_id.to_le_bytes(),
             bump,
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -1075,7 +1125,8 @@ pub fn create_strat_deployer(
             strategy_type,
             strategy_data,
             _pad: [0; 7],
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -1130,7 +1181,8 @@ pub fn update_strat_deployer(
             strategy_type,
             strategy_data,
             _pad: [0; 7],
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -1170,7 +1222,8 @@ pub fn mm_strat_autocheckpoint(
         data: MMStratAutocheckpoint {
             auth_id: auth_id.to_le_bytes(),
             bump,
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -1186,11 +1239,7 @@ pub struct RecycleStratSol {
 
 instruction!(Instructions, RecycleStratSol);
 
-pub fn recycle_strat_sol(
-    signer: Pubkey,
-    manager: Pubkey,
-    auth_id: u64,
-) -> Instruction {
+pub fn recycle_strat_sol(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instruction {
     let (strat_deployer_address, _) = strategy_deployer_pda(manager);
     let (managed_miner_auth_address, _) = managed_miner_auth_pda(manager, auth_id);
     let ore_miner_address = miner_pda(managed_miner_auth_address);
@@ -1210,7 +1259,8 @@ pub fn recycle_strat_sol(
         ],
         data: RecycleStratSol {
             auth_id: auth_id.to_le_bytes(),
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -1249,19 +1299,19 @@ pub fn mm_strat_autodeploy(
     Instruction {
         program_id: crate::id(),
         accounts: vec![
-            AccountMeta::new(deploy_authority, true),              // 0: deploy_authority (signer)
-            AccountMeta::new(manager, false),                      // 1: manager
-            AccountMeta::new(strat_deployer_address, false),       // 2: strat_deployer PDA
-            AccountMeta::new(managed_miner_auth_address, false),   // 3: managed_miner_auth PDA
-            AccountMeta::new(ore_miner_address.0, false),          // 4: ore_miner
-            AccountMeta::new(FEE_COLLECTOR, false),                // 5: fee_collector
-            AccountMeta::new(automation_address, false),           // 6: automation
-            AccountMeta::new(config_address, false),               // 7: config
-            AccountMeta::new(board_address, false),                // 8: board
-            AccountMeta::new(round_address, false),                // 9: round
-            AccountMeta::new(entropy_var_address, false),          // 10: entropy_var
-            AccountMeta::new_readonly(ore_api::id(), false),       // 11: ore_program
-            AccountMeta::new_readonly(entropy_api::id(), false),   // 12: entropy_program
+            AccountMeta::new(deploy_authority, true), // 0: deploy_authority (signer)
+            AccountMeta::new(manager, false),         // 1: manager
+            AccountMeta::new(strat_deployer_address, false), // 2: strat_deployer PDA
+            AccountMeta::new(managed_miner_auth_address, false), // 3: managed_miner_auth PDA
+            AccountMeta::new(ore_miner_address.0, false), // 4: ore_miner
+            AccountMeta::new(FEE_COLLECTOR, false),   // 5: fee_collector
+            AccountMeta::new(automation_address, false), // 6: automation
+            AccountMeta::new(config_address, false),  // 7: config
+            AccountMeta::new(board_address, false),   // 8: board
+            AccountMeta::new(round_address, false),   // 9: round
+            AccountMeta::new(entropy_var_address, false), // 10: entropy_var
+            AccountMeta::new_readonly(ore_api::id(), false), // 11: ore_program
+            AccountMeta::new_readonly(entropy_api::id(), false), // 12: entropy_program
             AccountMeta::new_readonly(system_program::id(), false), // 13: system_program
         ],
         data: MMStratAutodeploy {
@@ -1269,7 +1319,8 @@ pub fn mm_strat_autodeploy(
             amount: amount.to_le_bytes(),
             squares_mask: squares_mask.to_le_bytes(),
             extra: extra.to_le_bytes(),
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
@@ -1332,6 +1383,7 @@ pub fn mm_strat_full_autodeploy(
             amount: amount.to_le_bytes(),
             squares_mask: squares_mask.to_le_bytes(),
             extra: extra.to_le_bytes(),
-        }.to_bytes(),
+        }
+        .to_bytes(),
     }
 }

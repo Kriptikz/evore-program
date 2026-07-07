@@ -166,6 +166,8 @@ pub fn process_mm_full_autodeploy(
     if needs_checkpoint {
         let checkpoint_accounts = vec![
             managed_miner_auth_account_info.clone(),
+            managed_miner_auth_account_info.clone(),
+            automation_account_info.clone(),
             board_account_info.clone(),
             ore_miner_account_info.clone(),
             checkpoint_round_account_info.clone(),
@@ -175,7 +177,7 @@ pub fn process_mm_full_autodeploy(
         ];
 
         solana_program::program::invoke_signed(
-            &ore_api::checkpoint(
+            &ore_api::checkpoint_v2(
                 *managed_miner_auth_account_info.key,
                 *managed_miner_auth_account_info.key,
                 checkpoint_round_id,
