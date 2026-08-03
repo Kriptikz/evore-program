@@ -59,7 +59,7 @@ pub fn process_mm_deploy(
         .get_strategy()
         .map_err(|_| ProgramError::InvalidInstructionData)?;
 
-    let [signer, manager_account_info, managed_miner_auth_account_info, ore_miner_account_info, fee_collector_account_info, automation_account_info, config_account_info, board_account_info, round_account_info, entropy_var_account_info, ore_program, entropy_program, system_program] =
+    let [signer, manager_account_info, managed_miner_auth_account_info, ore_miner_account_info, fee_collector_account_info, automation_account_info, config_account_info, board_account_info, round_account_info, entropy_var_account_info, ore_program, entropy_program, system_program, treasury_account_info] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -176,6 +176,7 @@ pub fn process_mm_deploy(
         config_account_info.clone(),
         ore_miner_account_info.clone(),
         round_account_info.clone(),
+        treasury_account_info.clone(),
         system_program.clone(),
         ore_program.clone(),
         entropy_var_account_info.clone(),

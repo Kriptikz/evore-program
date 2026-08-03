@@ -36,6 +36,7 @@ pub fn process_mm_autodeploy(
         ore_program,                       // 11: ore_program
         entropy_program,                   // 12: entropy_program
         system_program_info,               // 13: system_program
+        treasury_account_info,             // 14: ore treasury (required by ORE deploy)
     ] = accounts else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
@@ -265,6 +266,7 @@ pub fn process_mm_autodeploy(
         config_account_info.clone(),
         ore_miner_account_info.clone(),
         round_account_info.clone(),
+        treasury_account_info.clone(),
         system_program_info.clone(),
         ore_program.clone(),
         entropy_var_account_info.clone(),
