@@ -27,7 +27,7 @@ pub fn process_mm_strat_autodeploy(
     let squares_mask = u32::from_le_bytes(args.squares_mask);
     let extra = u32::from_le_bytes(args.extra);
 
-    let [signer, manager_account_info, strat_deployer_account_info, managed_miner_auth_account_info, ore_miner_account_info, fee_collector_account_info, automation_account_info, config_account_info, board_account_info, round_account_info, entropy_var_account_info, ore_program, entropy_program, system_program_info] =
+    let [signer, manager_account_info, strat_deployer_account_info, managed_miner_auth_account_info, ore_miner_account_info, fee_collector_account_info, automation_account_info, config_account_info, board_account_info, round_account_info, entropy_var_account_info, ore_program, entropy_program, system_program_info, treasury_account_info] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
@@ -242,6 +242,7 @@ pub fn process_mm_strat_autodeploy(
         config_account_info.clone(),
         ore_miner_account_info.clone(),
         round_account_info.clone(),
+        treasury_account_info.clone(),
         system_program_info.clone(),
         ore_program.clone(),
         entropy_var_account_info.clone(),

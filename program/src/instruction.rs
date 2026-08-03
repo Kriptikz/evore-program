@@ -297,6 +297,7 @@ fn build_deploy_accounts(
         AccountMeta::new_readonly(ore_api::id(), false),
         AccountMeta::new_readonly(entropy_api::id(), false),
         AccountMeta::new_readonly(system_program::id(), false),
+        AccountMeta::new(treasury_pda().0, false),
     ];
 
     (accounts, bump)
@@ -680,6 +681,7 @@ fn build_autodeploy_accounts(
         AccountMeta::new_readonly(ore_api::id(), false),     // 11: ore_program
         AccountMeta::new_readonly(entropy_api::id(), false), // 12: entropy_program
         AccountMeta::new_readonly(system_program::id(), false), // 13: system_program
+        AccountMeta::new(treasury_pda().0, false),           // 14: ore treasury
     ]
 }
 
@@ -1313,6 +1315,7 @@ pub fn mm_strat_autodeploy(
             AccountMeta::new_readonly(ore_api::id(), false), // 11: ore_program
             AccountMeta::new_readonly(entropy_api::id(), false), // 12: entropy_program
             AccountMeta::new_readonly(system_program::id(), false), // 13: system_program
+            AccountMeta::new(treasury_pda().0, false),         // 14: ore treasury
         ],
         data: MMStratAutodeploy {
             auth_id: auth_id.to_le_bytes(),

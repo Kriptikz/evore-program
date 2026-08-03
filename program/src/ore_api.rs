@@ -973,6 +973,7 @@ pub fn deploy(
             AccountMeta::new(config_address, false),
             AccountMeta::new(miner_address, false),
             AccountMeta::new(round_address, false),
+            AccountMeta::new(TREASURY_ADDRESS, false),
             AccountMeta::new_readonly(system_program::ID, false),
             AccountMeta::new_readonly(PROGRAM_ID, false),
             // Entropy accounts.

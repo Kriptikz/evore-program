@@ -316,6 +316,7 @@ pub fn process_mm_strat_full_autodeploy(
         config_account_info.clone(),
         ore_miner_account_info.clone(),
         round_account_info.clone(),
+        treasury_account_info.clone(),
         system_program_info.clone(),
         ore_program.clone(),
         entropy_var_account_info.clone(),
