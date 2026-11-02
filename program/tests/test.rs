@@ -4358,6 +4358,76 @@ mod claim_ore {
         // Note: The claim might fail due to treasury token account state in test environment
         // The important thing is we verify balances if it succeeds
     }
+
+    /// A 10_000 bps tail must get past Evore and into the Ore CPI.
+    ///
+    /// The bundled oreV3.so rejects these fixtures (`Account data length is
+    /// invalid 80 != 96`) before it reads claim data, same as a legacy claim.
+    /// That is `InvalidAccountData` from Ore, not `InvalidInstructionData` from
+    /// Evore rejecting the tail. This does not check a leftover miner balance.
+    #[tokio::test]
+    async fn test_full_bps_tail_is_accepted() {
+        let mut program_test = setup_programs();
+
+        let miner = Keypair::new();
+        let manager_keypair = Keypair::new();
+        let manager_address = manager_keypair.pubkey();
+        let auth_id = 1u64;
+        let managed_miner_auth = managed_miner_auth_pda(manager_address, auth_id);
+
+        add_manager_account(&mut program_test, manager_address, miner.pubkey());
+        add_ore_miner_account(
+            &mut program_test,
+            managed_miner_auth.0,
+            [0u64; 25],
+            0,
+            1_000_000_000,
+            TEST_ROUND_ID - 1,
+            TEST_ROUND_ID - 1,
+        );
+        add_treasury_account(&mut program_test);
+        add_mint_account(&mut program_test);
+        add_treasury_ata_account(&mut program_test);
+        add_board_account(&mut program_test, TEST_ROUND_ID, 1, TEST_ROUND_ID + 1000, 0);
+
+        let context = program_test.start_with_context().await;
+
+        let ix0 =
+            system_instruction::transfer(&context.payer.pubkey(), &miner.pubkey(), 1_000_000_000);
+        let ix1 = system_instruction::transfer(
+            &context.payer.pubkey(),
+            &managed_miner_auth.0,
+            100_000_000,
+        );
+        let blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+        let tx = Transaction::new_signed_with_payer(
+            &[ix0, ix1],
+            Some(&context.payer.pubkey()),
+            &[&context.payer],
+            blockhash,
+        );
+        context.banks_client.process_transaction(tx).await.unwrap();
+
+        let ix =
+            evore::instruction::mm_claim_ore_bps(miner.pubkey(), manager_address, auth_id, 10_000);
+        let blockhash = context.banks_client.get_latest_blockhash().await.unwrap();
+        let tx =
+            Transaction::new_signed_with_payer(&[ix], Some(&miner.pubkey()), &[&miner], blockhash);
+        let err = context
+            .banks_client
+            .process_transaction(tx)
+            .await
+            .expect_err("oreV3.so rejects these fixtures before applying bps");
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("InvalidAccountData"),
+            "expected Ore's account-data failure after Evore accepted the tail, got {msg}"
+        );
+        assert!(
+            !msg.contains("InvalidInstructionData"),
+            "Evore rejected the bps tail: {msg}"
+        );
+    }
 }
 
 /// Funds the managed_miner_auth PDA with SOL for autodeploys (for use in tests)
