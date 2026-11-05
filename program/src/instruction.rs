@@ -520,6 +520,16 @@ pub fn mm_claim_ore(signer: Pubkey, manager: Pubkey, auth_id: u64) -> Instructio
     }
 }
 
+/// Same accounts as [`mm_claim_ore`], with an 8-byte basis-point tail.
+///
+/// `10_000` claims 100%. The tail is rejected by a program that has not been
+/// upgraded, so [`mm_claim_ore`] stays the 10-byte full claim.
+pub fn mm_claim_ore_bps(signer: Pubkey, manager: Pubkey, auth_id: u64, bps: u64) -> Instruction {
+    let mut ix = mm_claim_ore(signer, manager, auth_id);
+    ix.data.extend_from_slice(&bps.to_le_bytes());
+    ix
+}
+
 // ============================================================================
 // Deployer Instructions
 // ============================================================================
@@ -1315,7 +1325,7 @@ pub fn mm_strat_autodeploy(
             AccountMeta::new_readonly(ore_api::id(), false), // 11: ore_program
             AccountMeta::new_readonly(entropy_api::id(), false), // 12: entropy_program
             AccountMeta::new_readonly(system_program::id(), false), // 13: system_program
-            AccountMeta::new(treasury_pda().0, false),         // 14: ore treasury
+            AccountMeta::new(treasury_pda().0, false), // 14: ore treasury
         ],
         data: MMStratAutodeploy {
             auth_id: auth_id.to_le_bytes(),

@@ -8,11 +8,42 @@ use crate::{
     state::Manager,
 };
 
+/// `auth_id` (8) + `bump` (1). This is the body every current client sends.
+const MM_CLAIM_ORE_LEGACY_LEN: usize = 9;
+/// Optional tail: Ore claim basis points, little-endian u64. 10_000 = 100%.
+const MM_CLAIM_ORE_BPS_LEN: usize = 8;
+/// A missing tail is a full claim. Ore uses the same 10_000 denominator.
+const FULL_CLAIM_BPS: u64 = 10_000;
+
+/// Parse an `MMClaimORE` body (discriminator already stripped).
+///
+/// 9 bytes keeps today's full claim. 17 bytes appends `bps` and forwards it to
+/// Ore. `bps` is not a field of `MMClaimORE`: `try_from_bytes` requires an exact
+/// length, and a `u64` after the `u8` bump would insert 7 bytes of padding.
+pub(crate) fn parse_mm_claim_ore(
+    instruction_data: &[u8],
+) -> Result<(&MMClaimORE, u64), ProgramError> {
+    let (head, bps) = if instruction_data.len() == MM_CLAIM_ORE_LEGACY_LEN {
+        (instruction_data, FULL_CLAIM_BPS)
+    } else if instruction_data.len() == MM_CLAIM_ORE_LEGACY_LEN + MM_CLAIM_ORE_BPS_LEN {
+        let mut bps_bytes = [0u8; MM_CLAIM_ORE_BPS_LEN];
+        bps_bytes.copy_from_slice(&instruction_data[MM_CLAIM_ORE_LEGACY_LEN..]);
+        (
+            &instruction_data[..MM_CLAIM_ORE_LEGACY_LEN],
+            u64::from_le_bytes(bps_bytes),
+        )
+    } else {
+        return Err(ProgramError::InvalidInstructionData);
+    };
+
+    Ok((MMClaimORE::try_from_bytes(head)?, bps))
+}
+
 pub fn process_claim_ore(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> Result<(), ProgramError> {
-    let args = MMClaimORE::try_from_bytes(instruction_data)?;
+    let (args, bps) = parse_mm_claim_ore(instruction_data)?;
     let auth_id = u64::from_le_bytes(args.auth_id);
 
     let [signer, manager_account_info, managed_miner_auth_account_info, board_account_info, ore_miner_account_info, mint_account_info, recipient_account_info, signer_recipient_account_info, treasury_account_info, treasury_tokens_account_info, system_program, spl_program, spl_ata_program, ore_program] =
@@ -120,7 +151,7 @@ pub fn process_claim_ore(
     }
 
     solana_program::program::invoke_signed(
-        &ore_api::claim_ore(managed_miner_auth_key),
+        &ore_api::claim_ore(managed_miner_auth_key, bps),
         &claim_ore_accounts,
         &[&[
             crate::consts::MANAGED_MINER_AUTH,
@@ -163,4 +194,78 @@ pub fn process_claim_ore(
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::instruction::{mm_claim_ore, mm_claim_ore_bps};
+    use crate::ore_api::OreInstruction;
+
+    fn body(ix_data: &[u8]) -> &[u8] {
+        &ix_data[1..]
+    }
+
+    #[test]
+    fn legacy_claim_is_ten_bytes_and_parses_as_full_claim() {
+        let signer = Pubkey::new_unique();
+        let manager = Pubkey::new_unique();
+        let ix = mm_claim_ore(signer, manager, 7);
+        assert_eq!(ix.data.len(), 10);
+        assert_eq!(ix.data[0], 4);
+
+        let (args, bps) = parse_mm_claim_ore(body(&ix.data)).unwrap();
+        assert_eq!(bps, FULL_CLAIM_BPS);
+        assert_eq!(u64::from_le_bytes(args.auth_id), 7);
+    }
+
+    #[test]
+    fn bps_tail_is_eighteen_bytes_and_round_trips() {
+        let signer = Pubkey::new_unique();
+        let manager = Pubkey::new_unique();
+        let legacy = mm_claim_ore(signer, manager, 7);
+        let ix = mm_claim_ore_bps(signer, manager, 7, 2_500);
+
+        assert_eq!(ix.data.len(), 18);
+        assert_eq!(&ix.data[..10], &legacy.data[..]);
+        assert_eq!(
+            u64::from_le_bytes(ix.data[10..18].try_into().unwrap()),
+            2_500
+        );
+        assert_eq!(ix.accounts, legacy.accounts);
+
+        let (args, bps) = parse_mm_claim_ore(body(&ix.data)).unwrap();
+        assert_eq!(bps, 2_500);
+        assert_eq!(u64::from_le_bytes(args.auth_id), 7);
+    }
+
+    #[test]
+    fn zero_bps_is_not_rewritten_to_a_full_claim() {
+        let ix = mm_claim_ore_bps(Pubkey::new_unique(), Pubkey::new_unique(), 1, 0);
+        let (_, bps) = parse_mm_claim_ore(body(&ix.data)).unwrap();
+        assert_eq!(bps, 0);
+    }
+
+    #[test]
+    fn bps_above_the_denominator_is_forwarded_unchanged() {
+        let ix = mm_claim_ore_bps(Pubkey::new_unique(), Pubkey::new_unique(), 1, 10_001);
+        let (_, bps) = parse_mm_claim_ore(body(&ix.data)).unwrap();
+        assert_eq!(bps, 10_001);
+
+        let cpi = ore_api::claim_ore(Pubkey::new_unique(), bps);
+        assert_eq!(cpi.data.len(), 9);
+        assert_eq!(cpi.data[0], OreInstruction::ClaimORE as u8);
+        assert_eq!(
+            u64::from_le_bytes(cpi.data[1..9].try_into().unwrap()),
+            10_001
+        );
+    }
+
+    #[test]
+    fn other_body_lengths_are_rejected() {
+        for len in [0usize, 8, 10, 16, 18] {
+            let err = parse_mm_claim_ore(&vec![0u8; len]).unwrap_err();
+            assert_eq!(err, ProgramError::InvalidInstructionData);
+        }
+    }
 }

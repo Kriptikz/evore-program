@@ -1141,9 +1141,13 @@ pub fn claim_sol(signer: Pubkey) -> Instruction {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
-pub struct ClaimORE {}
+pub struct ClaimORE {
+    /// Share of refined and unrefined ORE to claim. 10_000 = 100%.
+    /// Ore clamps values above 10_000. Evore forwards this unchanged.
+    pub bps: [u8; 8],
+}
 instruction!(OreInstruction, ClaimORE);
-pub fn claim_ore(signer: Pubkey) -> Instruction {
+pub fn claim_ore(signer: Pubkey, bps: u64) -> Instruction {
     let board_address = board_pda().0;
     let miner_address = miner_pda(signer).0;
     let treasury_address = treasury_pda().0;
@@ -1165,7 +1169,10 @@ pub fn claim_ore(signer: Pubkey) -> Instruction {
             AccountMeta::new_readonly(spl_associated_token_account::ID, false),
             AccountMeta::new_readonly(PROGRAM_ID, false),
         ],
-        data: ClaimORE {}.to_bytes(),
+        data: ClaimORE {
+            bps: bps.to_le_bytes(),
+        }
+        .to_bytes(),
     }
 }
 
